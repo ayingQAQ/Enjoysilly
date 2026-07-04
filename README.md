@@ -143,6 +143,11 @@ my_silly/
 └── README.md
 ```
 
+仓库还包含：
+
+- `LICENSE`：GNU Affero General Public License v3.0 全文。
+- `NOTICE.md`：项目版权、SillyTavern 致谢和兼容性边界说明。
+
 ## 兼容性原则
 
 本项目的兼容性优先级高于界面便利性：
@@ -152,6 +157,19 @@ my_silly/
 - `extensions` 字段必须保留。
 - 预设 payload、角色卡 data、世界书条目里的未知字段不能被无意清洗。
 - 对具有执行风险的能力，例如正则脚本和未来脚本运行器，先做只读管理或显式安全边界，再考虑执行。
+
+## 与 SillyTavern 的关系
+
+Enjoysilly 是一个独立项目，参考了 SillyTavern 的产品形态、文件格式和兼容性边界，目标是提供更轻量的中文 Web 工作台体验。
+
+本项目重点兼容 SillyTavern 常见资产格式，包括角色卡、世界书 / Lorebook、Chat Completion 预设、对话记录和正则脚本元数据。对 SillyTavern 的引用仅用于兼容性说明、用户识别和技术致谢。
+
+Enjoysilly 不是 SillyTavern 官方项目，也不由 SillyTavern 团队维护或背书。SillyTavern 项目及其贡献者保留其原项目、文档、名称和相关实现的权利。
+
+参考链接：
+
+- SillyTavern repository: https://github.com/SillyTavern/SillyTavern
+- SillyTavern license and credits: https://docs.sillytavern.app/licensecredits/
 
 ## 隐私与本地数据
 
@@ -178,4 +196,12 @@ my_silly/
 
 ## 许可证
 
-当前暂未声明开源许可证。仓库保持私有时仅供个人开发使用；公开前应补充明确的 LICENSE。
+本项目采用 GNU Affero General Public License v3.0 only，SPDX 标识为 `AGPL-3.0-only`。完整条款见 [LICENSE](./LICENSE)。
+
+选择 AGPL-3.0 是为了与 SillyTavern 的许可证方向保持一致，也方便后续在参考其公开资料、兼容其格式或必要时适配相关实现时保持清晰的开源边界。
+
+简要提醒：
+
+- 如果你修改并通过网络提供本项目服务，需要按 AGPL-3.0 的要求向用户提供相应源代码。
+- 本项目按许可证原文以无担保方式提供。
+- 与 SillyTavern 相关的致谢和边界说明见 [NOTICE.md](./NOTICE.md)。
