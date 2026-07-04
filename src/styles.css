@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --app-bg: #f4f2ee;
+  --surface: #fffdf9;
+  --surface-muted: #f1eee7;
+  --border-soft: #e5ded2;
+  --border-strong: #d6cbbd;
+  --text-primary: #2a2723;
+  --text-secondary: #6d665d;
+  --text-muted: #9d9488;
+  --accent: #5f8478;
+  --accent-strong: #4c6c61;
+  --accent-weak: #e7efeb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    "Noto Sans SC",
+    "Microsoft YaHei",
+    "PingFang SC",
+    system-ui,
+    sans-serif;
+  background: var(--app-bg);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--accent-weak);
+  color: var(--accent-strong);
+}
