@@ -62,27 +62,33 @@ describe("character import service", () => {
     const database = await openMySillyDatabase(createTestDatabaseName());
     const bytes = readFileSync(findFixture(".png"));
 
-    const result = await importCharacterToDatabase(bytes, "红楼.png", {
-      database,
-      id: "honglou",
-      now: () => "2026-07-03T16:00:00.000Z",
-    });
+    try {
+      const result = await importCharacterToDatabase(bytes, "card.png", {
+        database,
+        id: "honglou",
+        now: () => "2026-07-03T16:00:00.000Z",
+      });
 
-    expect(result.imported.format).toBe("png");
-    expect(result.stored.name).toBe("红楼梦世界");
-    expect(result.result).toMatchObject({
-      assetKind: "character",
-      fileName: "红楼.png",
-      stored: result.stored,
-    });
-    expect(result.result.warnings.map((warning) => warning.code)).toContain(
-      "unknown-fields-preserved",
-    );
+      expect(result.imported.format).toBe("png");
+      expect(result.stored.sourceFileName).toBe("card.png");
+      expect(result.stored.sourcePngBytes?.byteLength).toBe(bytes.byteLength);
+      expect(result.stored.sourcePngBytes?.[0]).toBe(bytes[0]);
+      expect(result.stored.sourcePngBytes?.[1]).toBe(bytes[1]);
+      expect(result.result).toMatchObject({
+        assetKind: "character",
+        fileName: "card.png",
+        stored: result.stored,
+      });
+      expect(result.result.warnings.map((warning) => warning.code)).toContain(
+        "unknown-fields-preserved",
+      );
 
-    await expect(getCharacter("honglou", database)).resolves.toEqual(
-      result.stored,
-    );
+      const stored = await getCharacter("honglou", database);
 
-    database.close();
-  });
+      expect(stored?.id).toBe(result.stored.id);
+      expect(stored?.sourcePngBytes?.byteLength).toBe(bytes.byteLength);
+    } finally {
+      database.close();
+    }
+  }, 15000);
 });

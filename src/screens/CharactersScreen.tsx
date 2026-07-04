@@ -21,7 +21,10 @@ import {
   loadCharacterDetailSummary,
   type CharacterDetailSummary,
 } from "../services/characterDetails";
-import { createCharacterJsonExport } from "../services/characterExport";
+import {
+  createCharacterJsonExport,
+  createCharacterPngExport,
+} from "../services/characterExport";
 import { importCharacterFilesToDatabase } from "../services/characterFileImport";
 
 interface CharacterNotice {
@@ -145,6 +148,32 @@ export function CharactersScreen() {
       setNotice({
         kind: "success",
         message: `已导出角色卡 JSON：${exported.fileName}。`,
+      });
+    } catch (exportError: unknown) {
+      setNotice({
+        kind: "error",
+        message:
+          exportError instanceof Error ? exportError.message : String(exportError),
+      });
+    } finally {
+      setBusyCharacterId(null);
+    }
+  }, []);
+
+  const handleExportCharacterPng = useCallback(async (characterId: string) => {
+    setBusyCharacterId(characterId);
+    setNotice(null);
+
+    try {
+      const exported = await createCharacterPngExport(characterId);
+
+      downloadBytesToFile(exported.bytes, exported.fileName, "image/png");
+      setNotice({
+        kind: "success",
+        message:
+          exported.source === "original"
+            ? `已导出角色卡 PNG：${exported.fileName}。`
+            : `已使用默认封面导出角色卡 PNG：${exported.fileName}。`,
       });
     } catch (exportError: unknown) {
       setNotice({
@@ -373,6 +402,15 @@ export function CharactersScreen() {
                 >
                   <Download size={14} />
                   导出 JSON
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isCharacterActionBusy}
+                  type="button"
+                  onClick={() => void handleExportCharacterPng(character.id)}
+                >
+                  <ImagePlus size={14} />
+                  导出 PNG
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:border-red-300 disabled:cursor-not-allowed disabled:opacity-60"

@@ -16,7 +16,10 @@ export interface StoredEntity<TPayload> {
   payload: TPayload;
 }
 
-export type StoredCharacter = StoredEntity<CharacterCard>;
+export type StoredCharacter = StoredEntity<CharacterCard> & {
+  sourcePngBytes?: Uint8Array;
+  sourceFileName?: string;
+};
 export type StoredPreset = StoredEntity<ChatCompletionPreset>;
 export type StoredWorldInfo = StoredEntity<NativeWorldInfoBook | PortableCharacterBook>;
 export type StoredChat = StoredEntity<SillyTavernChatLog> & {

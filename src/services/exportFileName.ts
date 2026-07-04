@@ -1,4 +1,12 @@
 export function createSafeJsonFileName(name: string, fallbackName: string): string {
+  return createSafeFileName(name, fallbackName, "json");
+}
+
+export function createSafeFileName(
+  name: string,
+  fallbackName: string,
+  extension: string,
+): string {
   const normalizedName = name
     .trim()
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
@@ -12,7 +20,7 @@ export function createSafeJsonFileName(name: string, fallbackName: string): stri
     ? `_${safeName}`
     : safeName;
 
-  return `${finalName || fallbackName}.json`;
+  return `${finalName || fallbackName}.${extension}`;
 }
 
 function isWindowsReservedFileName(name: string): boolean {

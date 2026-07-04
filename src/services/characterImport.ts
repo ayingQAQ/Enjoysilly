@@ -47,6 +47,11 @@ export async function importCharacterToDatabase(
   const stored = createStoredCharacter(imported.card, options);
   const database = options.database ?? (await getMySillyDatabase());
 
+  if (imported.format === "png") {
+    stored.sourcePngBytes = new Uint8Array(bytes);
+    stored.sourceFileName = fileName;
+  }
+
   await saveCharacter(stored, database);
 
   return {
