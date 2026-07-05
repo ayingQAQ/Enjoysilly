@@ -8,12 +8,15 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Archive,
   Bot,
+  Download,
   FileJson2,
   KeyRound,
   Loader2,
   MessageSquare,
   RotateCcw,
+  Save,
   Send,
   Square,
   UserRound,
@@ -21,6 +24,7 @@ import {
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { runStreamingChatTurn } from "../lib/chatStreaming";
+import { downloadBytesToFile } from "../lib/browserDownload";
 import {
   loadCharacterAssetSummaries,
   loadPresetAssetSummaries,
@@ -35,6 +39,16 @@ import {
   loadPresetDetailSummary,
   type PresetDetailSummary,
 } from "../services/presetDetails";
+import {
+  saveChatSnapshotToDatabase,
+  type SaveChatSnapshotToDatabaseInput,
+} from "../services/chatPersistence";
+import {
+  loadChatArchiveDetail,
+  loadChatArchiveSummaries,
+  type ChatArchiveSummary,
+} from "../services/chatArchive";
+import { createChatJsonlExport } from "../services/chatExport";
 import type { ChatMessageLine } from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
@@ -64,12 +78,20 @@ export function ChatScreen() {
     defaultPersonaDescription,
   );
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const [isAssetLoading, setIsAssetLoading] = useState(true);
+  const [isArchiveLoading, setIsArchiveLoading] = useState(true);
+  const [loadingArchiveId, setLoadingArchiveId] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterAssetSummary[]>([]);
   const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
+  const [chatArchives, setChatArchives] = useState<ChatArchiveSummary[]>([]);
+  const [loadedArchiveId, setLoadedArchiveId] = useState<string | null>(null);
+  const [loadedArchiveName, setLoadedArchiveName] = useState<string | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState(
     localCharacterOptionId,
   );
@@ -101,6 +123,8 @@ export function ChatScreen() {
     selectedPresetDetail?.stored.payload,
     fallbackPreset,
   );
+  const archiveFilterCharacterId =
+    getChatArchiveFilterCharacterId(selectedCharacterId);
   const isCharacterReady =
     selectedCharacterId === localCharacterOptionId ||
     selectedCharacterDetail !== null;
@@ -111,6 +135,32 @@ export function ChatScreen() {
     inputText.trim().length > 0 &&
     isCharacterReady &&
     isPresetReady;
+  const canSave = !isStreaming && !isSaving && messages.length > 0;
+  const canExport = !isStreaming && messages.length > 0;
+
+  const refreshChatArchives = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      if (!options.silent) {
+        setIsArchiveLoading(true);
+      }
+      setArchiveError(null);
+
+      try {
+        const summaries = await loadChatArchiveSummaries({
+          characterId: archiveFilterCharacterId,
+        });
+
+        setChatArchives(summaries);
+      } catch (loadError: unknown) {
+        setArchiveError(formatUnknownError(loadError));
+      } finally {
+        if (!options.silent) {
+          setIsArchiveLoading(false);
+        }
+      }
+    },
+    [archiveFilterCharacterId],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -142,6 +192,10 @@ export function ChatScreen() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshChatArchives();
+  }, [refreshChatArchives]);
 
   useEffect(() => {
     if (selectedCharacterId === localCharacterOptionId) {
@@ -231,6 +285,7 @@ export function ChatScreen() {
       setIsStreaming(true);
       setStatusText("正在请求模型");
       setError(null);
+      setSaveMessage(null);
       setInputText("");
 
       try {
@@ -295,6 +350,114 @@ export function ChatScreen() {
     abortControllerRef.current?.abort();
   }, []);
 
+  const handleSave = useCallback(async () => {
+    if (!canSave) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    setSaveMessage(null);
+
+    try {
+      const stored = await saveChatSnapshotToDatabase(
+        createChatSaveSnapshotInput({
+          activeCharacter,
+          messages,
+          selectedCharacterId,
+          userName,
+        }),
+      );
+
+      setSaveMessage(`已保存：${stored.name}`);
+      setLoadedArchiveId(stored.id);
+      setLoadedArchiveName(stored.name);
+      setStatusText("对话已保存到本地数据库");
+      await refreshChatArchives({ silent: true });
+    } catch (saveError: unknown) {
+      setError(formatChatSaveError(saveError));
+      setStatusText("保存失败");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    activeCharacter,
+    canSave,
+    messages,
+    refreshChatArchives,
+    selectedCharacterId,
+    userName,
+  ]);
+
+  const handleExport = useCallback(() => {
+    if (!canExport) {
+      return;
+    }
+
+    setError(null);
+    setSaveMessage(null);
+
+    try {
+      const artifact = createChatJsonlExport({
+        messages,
+        userName: normalizeName(userName, defaultUserName),
+        characterName: normalizeName(
+          activeCharacter.data.name,
+          defaultCharacterName,
+        ),
+        chatName: loadedArchiveName ?? undefined,
+      });
+
+      downloadBytesToFile(
+        artifact.bytes,
+        artifact.fileName,
+        "application/x-ndjson",
+      );
+      setSaveMessage(`已导出：${artifact.fileName}`);
+      setStatusText("当前对话已导出为 JSONL");
+    } catch (exportError: unknown) {
+      setError(formatChatExportError(exportError));
+      setStatusText("导出失败");
+    }
+  }, [activeCharacter, canExport, loadedArchiveName, messages, userName]);
+
+  const handleLoadArchive = useCallback(
+    async (archiveId: string) => {
+      if (isStreaming || loadingArchiveId) {
+        return;
+      }
+
+      setLoadingArchiveId(archiveId);
+      setError(null);
+      setSaveMessage(null);
+      setArchiveError(null);
+
+      try {
+        const detail = await loadChatArchiveDetail(archiveId);
+        const metadata = detail.stored.payload.metadata;
+
+        setMessages(detail.stored.payload.messages);
+        setUserName(normalizeName(metadata.user_name, defaultUserName));
+
+        if (selectedCharacterId === localCharacterOptionId) {
+          setCharacterName(
+            normalizeName(metadata.character_name, defaultCharacterName),
+          );
+        }
+
+        setLoadedArchiveId(detail.summary.id);
+        setLoadedArchiveName(detail.summary.name);
+        setStatusText(`已加载存档：${detail.summary.name}`);
+      } catch (loadError: unknown) {
+        setArchiveError(formatUnknownError(loadError));
+        setStatusText("读取存档失败");
+      } finally {
+        setLoadingArchiveId(null);
+      }
+    },
+    [isStreaming, loadingArchiveId, selectedCharacterId],
+  );
+
   const handleReset = useCallback(() => {
     if (isStreaming) {
       return;
@@ -302,6 +465,9 @@ export function ChatScreen() {
 
     setMessages([]);
     setError(null);
+    setSaveMessage(null);
+    setLoadedArchiveId(null);
+    setLoadedArchiveName(null);
     setStatusText("等待输入");
   }, [isStreaming]);
 
@@ -317,8 +483,8 @@ export function ChatScreen() {
               连接 OpenAI 兼容接口，执行流式 Chat Completion 回合。
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
-              当前页面可以选择已导入角色和 ST 原生预设用于发送；对话仍只保存在当前页面状态，
-              不写入 IndexedDB，不修改角色卡、世界书、预设或正则脚本 payload。
+              当前页面可以选择已导入角色和 ST 原生预设用于发送；对话默认只保存在当前页面状态，
+              也可以手动保存为 ST JSONL 兼容快照，不修改角色卡、世界书、预设或正则脚本 payload。
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
@@ -341,17 +507,46 @@ export function ChatScreen() {
                 <p className="truncate text-xs text-[var(--text-muted)]">
                   {activeCharacter.data.name} · {normalizeName(userName, defaultUserName)}
                 </p>
+                {loadedArchiveName ? (
+                  <p className="truncate text-xs text-[var(--text-muted)]">
+                    已加载：{loadedArchiveName}
+                  </p>
+                ) : null}
               </div>
             </div>
-            <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isStreaming || messages.length === 0}
-              type="button"
-              onClick={handleReset}
-            >
-              <RotateCcw size={14} />
-              清空
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canExport}
+                type="button"
+                onClick={handleExport}
+              >
+                <Download size={14} />
+                导出
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canSave}
+                type="button"
+                onClick={() => void handleSave()}
+              >
+                {isSaving ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  <Save size={14} />
+                )}
+                保存
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isStreaming || messages.length === 0}
+                type="button"
+                onClick={handleReset}
+              >
+                <RotateCcw size={14} />
+                清空
+              </button>
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
@@ -369,6 +564,11 @@ export function ChatScreen() {
           {error ? (
             <p className="mx-4 mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700">
               {error}
+            </p>
+          ) : null}
+          {saveMessage ? (
+            <p className="mx-4 mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-6 text-emerald-700">
+              {saveMessage}
             </p>
           ) : null}
 
@@ -479,6 +679,23 @@ export function ChatScreen() {
             characterDetail={selectedCharacterDetail}
             isAssetLoading={isAssetLoading}
             presetDetail={selectedPresetDetail}
+          />
+
+          <div className="border-t border-[var(--border-soft)] pt-4">
+            <PanelTitle
+              icon={<Archive size={17} />}
+              title="本地存档"
+              subtitle="只读列出并加载 chats store；不重命名、不删除、不自动保存。"
+            />
+          </div>
+          {archiveError ? <NoticeText kind="error" text={archiveError} /> : null}
+          <ChatArchiveList
+            archives={chatArchives}
+            isLoading={isArchiveLoading}
+            loadingArchiveId={loadingArchiveId}
+            selectedArchiveId={loadedArchiveId}
+            onLoad={(archiveId) => void handleLoadArchive(archiveId)}
+            disabled={isStreaming}
           />
 
           <div className="border-t border-[var(--border-soft)] pt-4">
@@ -598,6 +815,34 @@ export function selectChatPresetPayload(
   fallbackPreset: ChatCompletionPreset,
 ): ChatCompletionPreset {
   return importedPreset ?? fallbackPreset;
+}
+
+export function getChatArchiveFilterCharacterId(
+  selectedCharacterId: string,
+): string | undefined {
+  return selectedCharacterId === localCharacterOptionId
+    ? undefined
+    : selectedCharacterId;
+}
+
+export function createChatSaveSnapshotInput(input: {
+  activeCharacter: CharacterCard;
+  messages: ChatMessageLine[];
+  selectedCharacterId: string;
+  userName: string;
+}): SaveChatSnapshotToDatabaseInput {
+  return {
+    messages: input.messages,
+    userName: normalizeName(input.userName, defaultUserName),
+    characterName: normalizeName(
+      input.activeCharacter.data.name,
+      defaultCharacterName,
+    ),
+    characterId:
+      input.selectedCharacterId === localCharacterOptionId
+        ? undefined
+        : input.selectedCharacterId,
+  };
 }
 
 function ChatBubble({ message }: { message: ChatMessageLine }) {
@@ -722,6 +967,83 @@ function AssetSelectionSummary({
   );
 }
 
+function ChatArchiveList({
+  archives,
+  disabled,
+  isLoading,
+  loadingArchiveId,
+  selectedArchiveId,
+  onLoad,
+}: {
+  archives: ChatArchiveSummary[];
+  disabled: boolean;
+  isLoading: boolean;
+  loadingArchiveId: string | null;
+  selectedArchiveId: string | null;
+  onLoad: (archiveId: string) => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
+        正在读取本地存档...
+      </div>
+    );
+  }
+
+  if (archives.length === 0) {
+    return (
+      <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
+        当前筛选下还没有已保存的对话。
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+      {archives.map((archive) => {
+        const isSelected = archive.id === selectedArchiveId;
+        const isLoadingArchive = archive.id === loadingArchiveId;
+
+        return (
+          <div
+            key={archive.id}
+            className={[
+              "rounded-lg border p-3 text-xs leading-5",
+              isSelected
+                ? "border-[var(--accent)] bg-[var(--accent-weak)]"
+                : "border-[var(--border-soft)] bg-[var(--surface-muted)]",
+            ].join(" ")}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-[var(--text-primary)]">
+                  {archive.name}
+                </p>
+                <p className="mt-1 text-[var(--text-muted)]">
+                  {archive.characterName ?? "未知角色"} · {archive.messageCount} 行
+                </p>
+              </div>
+              <button
+                className="shrink-0 rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-1 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={disabled || Boolean(loadingArchiveId)}
+                type="button"
+                onClick={() => onLoad(archive.id)}
+              >
+                {isLoadingArchive ? "读取中" : isSelected ? "已加载" : "加载"}
+              </button>
+            </div>
+            {archive.lastMessagePreview ? (
+              <p className="mt-2 max-h-10 overflow-hidden text-[var(--text-secondary)]">
+                {archive.lastMessagePreview}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function NoticeText({ kind, text }: { kind: "error" | "muted"; text: string }) {
   return (
     <p
@@ -826,6 +1148,22 @@ function formatChatSendError(error: unknown): string {
   }
 
   return `${String(error)}。请检查 API 配置。`;
+}
+
+function formatChatSaveError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.message}。保存对话失败，请检查浏览器是否允许 IndexedDB。`;
+  }
+
+  return `${String(error)}。保存对话失败。`;
+}
+
+function formatChatExportError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.message}。导出对话失败，请检查浏览器下载权限。`;
+  }
+
+  return `${String(error)}。导出对话失败。`;
 }
 
 function formatUnknownError(error: unknown): string {
