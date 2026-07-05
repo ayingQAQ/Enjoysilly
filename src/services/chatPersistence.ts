@@ -1,0 +1,108 @@
+import { formatSillyTavernChatDate } from "../lib/chatTurn";
+import {
+  getMySillyDatabase,
+  saveChat,
+  type MySillyDatabaseConnection,
+  type StoredChat,
+} from "../lib/db";
+import type {
+  ChatMessageLine,
+  ChatMetadataLine,
+  SillyTavernChatLog,
+} from "../types/chat";
+import type { UnknownRecord } from "../types/common";
+import { createStoredChat } from "./chatImport";
+
+export interface CreateChatLogSnapshotInput {
+  messages: ChatMessageLine[];
+  userName: string;
+  characterName: string;
+  now?: Date;
+  chatMetadata?: UnknownRecord;
+}
+
+export interface CreateStoredChatSnapshotInput
+  extends CreateChatLogSnapshotInput {
+  id?: string;
+  name?: string;
+  characterId?: string;
+  groupId?: string;
+}
+
+export interface SaveChatSnapshotToDatabaseInput
+  extends CreateStoredChatSnapshotInput {
+  database?: MySillyDatabaseConnection;
+}
+
+export async function saveChatSnapshotToDatabase(
+  input: SaveChatSnapshotToDatabaseInput,
+): Promise<StoredChat> {
+  const database = input.database ?? (await getMySillyDatabase());
+  const stored = createStoredChatSnapshot(input);
+
+  await saveChat(stored, database);
+
+  return stored;
+}
+
+export function createStoredChatSnapshot(
+  input: CreateStoredChatSnapshotInput,
+): StoredChat {
+  const chatLog = createChatLogSnapshot(input);
+  const now = input.now ?? new Date();
+
+  return createStoredChat(
+    chatLog,
+    input.name ?? createChatSnapshotName(chatLog.metadata),
+    {
+      id: input.id,
+      characterId: input.characterId,
+      groupId: input.groupId,
+      now: () => now.toISOString(),
+    },
+  );
+}
+
+export function createChatLogSnapshot(
+  input: CreateChatLogSnapshotInput,
+): SillyTavernChatLog {
+  return {
+    metadata: createChatMetadata(input),
+    messages: input.messages.map(cloneChatMessage),
+  };
+}
+
+export function createChatSnapshotName(metadata: ChatMetadataLine): string {
+  const characterName = metadata.character_name?.trim();
+  const createDate = metadata.create_date?.trim();
+
+  if (characterName && createDate) {
+    return `${characterName} · ${createDate}`;
+  }
+
+  return createDate || characterName || "未命名对话";
+}
+
+function createChatMetadata(
+  input: CreateChatLogSnapshotInput,
+): ChatMetadataLine {
+  const metadata: ChatMetadataLine = {
+    user_name: input.userName,
+    character_name: input.characterName,
+    create_date: formatSillyTavernChatDate(input.now),
+  };
+
+  if (input.chatMetadata) {
+    metadata.chat_metadata = cloneUnknownRecord(input.chatMetadata);
+  }
+
+  return metadata;
+}
+
+function cloneChatMessage(message: ChatMessageLine): ChatMessageLine {
+  return structuredClone(message) as ChatMessageLine;
+}
+
+function cloneUnknownRecord(value: UnknownRecord): UnknownRecord {
+  return structuredClone(value) as UnknownRecord;
+}

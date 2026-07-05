@@ -1,12 +1,46 @@
-import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Bot, KeyRound, Loader2, MessageSquare, RotateCcw, Send, Square } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import {
+  Bot,
+  FileJson2,
+  KeyRound,
+  Loader2,
+  MessageSquare,
+  RotateCcw,
+  Send,
+  Square,
+  UserRound,
+} from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { runStreamingChatTurn } from "../lib/chatStreaming";
+import {
+  loadCharacterAssetSummaries,
+  loadPresetAssetSummaries,
+  type CharacterAssetSummary,
+  type PresetAssetSummary,
+} from "../services/assetCatalog";
+import {
+  loadCharacterDetailSummary,
+  type CharacterDetailSummary,
+} from "../services/characterDetails";
+import {
+  loadPresetDetailSummary,
+  type PresetDetailSummary,
+} from "../services/presetDetails";
 import type { ChatMessageLine } from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
 
+const localCharacterOptionId = "__local_character__";
+const minimalPresetOptionId = "__minimal_preset__";
 const defaultBaseUrl = "https://api.openai.com/v1";
 const defaultModel = "gpt-4.1-mini";
 const defaultUserName = "User";
@@ -32,10 +66,26 @@ export function ChatScreen() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
+  const [assetError, setAssetError] = useState<string | null>(null);
+  const [isAssetLoading, setIsAssetLoading] = useState(true);
+  const [characters, setCharacters] = useState<CharacterAssetSummary[]>([]);
+  const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
+  const [selectedCharacterId, setSelectedCharacterId] = useState(
+    localCharacterOptionId,
+  );
+  const [selectedPresetId, setSelectedPresetId] = useState(minimalPresetOptionId);
+  const [selectedCharacterDetail, setSelectedCharacterDetail] =
+    useState<CharacterDetailSummary | null>(null);
+  const [selectedPresetDetail, setSelectedPresetDetail] =
+    useState<PresetDetailSummary | null>(null);
+  const [characterDetailError, setCharacterDetailError] = useState<string | null>(
+    null,
+  );
+  const [presetDetailError, setPresetDetailError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const preset = useMemo(() => createMinimalChatPreset(), []);
-  const character = useMemo(
+  const fallbackPreset = useMemo(() => createMinimalChatPreset(), []);
+  const localCharacter = useMemo(
     () =>
       createLocalChatCharacter({
         name: characterName,
@@ -43,6 +93,111 @@ export function ChatScreen() {
       }),
     [characterDescription, characterName],
   );
+  const activeCharacter = selectChatCharacterPayload(
+    selectedCharacterDetail?.stored.payload,
+    localCharacter,
+  );
+  const activePreset = selectChatPresetPayload(
+    selectedPresetDetail?.stored.payload,
+    fallbackPreset,
+  );
+  const isCharacterReady =
+    selectedCharacterId === localCharacterOptionId ||
+    selectedCharacterDetail !== null;
+  const isPresetReady =
+    selectedPresetId === minimalPresetOptionId || selectedPresetDetail !== null;
+  const canSend =
+    !isStreaming &&
+    inputText.trim().length > 0 &&
+    isCharacterReady &&
+    isPresetReady;
+
+  useEffect(() => {
+    let isActive = true;
+
+    setIsAssetLoading(true);
+    setAssetError(null);
+
+    Promise.all([loadCharacterAssetSummaries(), loadPresetAssetSummaries()])
+      .then(([loadedCharacters, loadedPresets]) => {
+        if (!isActive) {
+          return;
+        }
+
+        setCharacters(loadedCharacters);
+        setPresets(loadedPresets);
+      })
+      .catch((loadError: unknown) => {
+        if (isActive) {
+          setAssetError(formatUnknownError(loadError));
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsAssetLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedCharacterId === localCharacterOptionId) {
+      setSelectedCharacterDetail(null);
+      setCharacterDetailError(null);
+      return;
+    }
+
+    let isActive = true;
+    setSelectedCharacterDetail(null);
+    setCharacterDetailError(null);
+
+    loadCharacterDetailSummary(selectedCharacterId)
+      .then((detail) => {
+        if (isActive) {
+          setSelectedCharacterDetail(detail);
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (isActive) {
+          setCharacterDetailError(formatUnknownError(loadError));
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedCharacterId]);
+
+  useEffect(() => {
+    if (selectedPresetId === minimalPresetOptionId) {
+      setSelectedPresetDetail(null);
+      setPresetDetailError(null);
+      return;
+    }
+
+    let isActive = true;
+    setSelectedPresetDetail(null);
+    setPresetDetailError(null);
+
+    loadPresetDetailSummary(selectedPresetId)
+      .then((detail) => {
+        if (isActive) {
+          setSelectedPresetDetail(detail);
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (isActive) {
+          setPresetDetailError(formatUnknownError(loadError));
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedPresetId]);
 
   const handleSend = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -53,6 +208,11 @@ export function ChatScreen() {
       const trimmedModel = model.trim();
 
       if (!userText || isStreaming) {
+        return;
+      }
+
+      if (!isCharacterReady || !isPresetReady) {
+        setError("正在读取选中的角色或预设，请稍后再发送。");
         return;
       }
 
@@ -78,8 +238,8 @@ export function ChatScreen() {
           baseUrl: trimmedBaseUrl,
           apiKey,
           model: trimmedModel,
-          preset,
-          character,
+          preset: activePreset,
+          character: activeCharacter,
           messages,
           userName: normalizeName(userName, defaultUserName),
           userText,
@@ -116,15 +276,17 @@ export function ChatScreen() {
       }
     },
     [
+      activeCharacter,
+      activePreset,
       apiKey,
       baseUrl,
-      character,
       inputText,
+      isCharacterReady,
+      isPresetReady,
       isStreaming,
       messages,
       model,
       personaDescription,
-      preset,
       userName,
     ],
   );
@@ -152,21 +314,16 @@ export function ChatScreen() {
               实时对话
             </p>
             <h1 className="text-2xl font-semibold tracking-tight">
-              连接 OpenAI 兼容接口，执行最小流式 Chat Completion 回合。
+              连接 OpenAI 兼容接口，执行流式 Chat Completion 回合。
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
-              当前页面只做本地会话调试：使用阶段 4 纯 service 组装请求、接收
-              SSE 流并显示消息，不保存 IndexedDB，不修改角色卡、世界书或预设
-              payload。
+              当前页面可以选择已导入角色和 ST 原生预设用于发送；对话仍只保存在当前页面状态，
+              不写入 IndexedDB，不修改角色卡、世界书、预设或正则脚本 payload。
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
             <SummaryTile label="消息行" value={messages.length} />
-            <SummaryTile
-              label="模型"
-              value={model.trim() || "未设置"}
-              compact
-            />
+            <SummaryTile label="模型" value={model.trim() || "未设置"} compact />
             <SummaryTile label="状态" value={statusText} compact />
           </div>
         </div>
@@ -182,8 +339,7 @@ export function ChatScreen() {
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold">本地对话窗口</h2>
                 <p className="truncate text-xs text-[var(--text-muted)]">
-                  {normalizeName(characterName, defaultCharacterName)} ·{" "}
-                  {normalizeName(userName, defaultUserName)}
+                  {activeCharacter.data.name} · {normalizeName(userName, defaultUserName)}
                 </p>
               </div>
             </div>
@@ -248,10 +404,14 @@ export function ChatScreen() {
                 ) : null}
                 <button
                   className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isStreaming || inputText.trim().length === 0}
+                  disabled={!canSend}
                   type="submit"
                 >
-                  {isStreaming ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                  {isStreaming ? (
+                    <Loader2 className="animate-spin" size={16} />
+                  ) : (
+                    <Send size={16} />
+                  )}
                   发送
                 </button>
               </div>
@@ -271,22 +431,78 @@ export function ChatScreen() {
 
           <div className="border-t border-[var(--border-soft)] pt-4">
             <PanelTitle
+              icon={<UserRound size={17} />}
+              title="资产选择"
+              subtitle="读取已导入角色和 ST 原生预设；当前阶段只读使用，不保存绑定关系。"
+            />
+          </div>
+          <SelectField
+            disabled={isStreaming || isAssetLoading}
+            label="角色"
+            options={[
+              {
+                label: "本地调试角色",
+                value: localCharacterOptionId,
+              },
+              ...characters.map((characterAsset) => ({
+                label: characterAsset.name,
+                value: characterAsset.id,
+              })),
+            ]}
+            value={selectedCharacterId}
+            onChange={setSelectedCharacterId}
+          />
+          <SelectField
+            disabled={isStreaming || isAssetLoading}
+            label="预设"
+            options={[
+              {
+                label: "最小 Chat Completion 预设",
+                value: minimalPresetOptionId,
+              },
+              ...presets.map((presetAsset) => ({
+                label: presetAsset.name,
+                value: presetAsset.id,
+              })),
+            ]}
+            value={selectedPresetId}
+            onChange={setSelectedPresetId}
+          />
+          {assetError ? <NoticeText kind="error" text={assetError} /> : null}
+          {characterDetailError ? (
+            <NoticeText kind="error" text={characterDetailError} />
+          ) : null}
+          {presetDetailError ? (
+            <NoticeText kind="error" text={presetDetailError} />
+          ) : null}
+          <AssetSelectionSummary
+            characterDetail={selectedCharacterDetail}
+            isAssetLoading={isAssetLoading}
+            presetDetail={selectedPresetDetail}
+          />
+
+          <div className="border-t border-[var(--border-soft)] pt-4">
+            <PanelTitle
               icon={<Bot size={17} />}
-              title="调试角色"
-              subtitle="用于生成本回合 prompt；后续阶段再接入真实角色/预设选择。"
+              title="调试输入"
+              subtitle="本地角色模式下可编辑；已导入角色会按原始 payload 只读使用。"
             />
           </div>
           <Field label="用户名" value={userName} onChange={setUserName} />
-          <Field
-            label="角色名"
-            value={characterName}
-            onChange={setCharacterName}
-          />
-          <TextAreaField
-            label="角色描述"
-            value={characterDescription}
-            onChange={setCharacterDescription}
-          />
+          {selectedCharacterId === localCharacterOptionId ? (
+            <>
+              <Field
+                label="角色名"
+                value={characterName}
+                onChange={setCharacterName}
+              />
+              <TextAreaField
+                label="角色描述"
+                value={characterDescription}
+                onChange={setCharacterDescription}
+              />
+            </>
+          ) : null}
           <TextAreaField
             label="用户 persona"
             value={personaDescription}
@@ -294,9 +510,8 @@ export function ChatScreen() {
           />
 
           <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
-            内置预设包含 system、personaDescription、charDescription、
-            chatHistory 四个原生 prompt 项；不会执行 TavernHelper、
-            JS-Slash-Runner 或正则脚本。
+            选中的预设仅按 ST 原生 Chat Completion 结构参与 prompt 组装；不会执行
+            TavernHelper、JS-Slash-Runner 或正则脚本。
           </div>
         </aside>
       </div>
@@ -371,6 +586,20 @@ export function createMinimalChatPreset(): ChatCompletionPreset {
   };
 }
 
+export function selectChatCharacterPayload(
+  importedCharacter: CharacterCard | undefined,
+  fallbackCharacter: CharacterCard,
+): CharacterCard {
+  return importedCharacter ?? fallbackCharacter;
+}
+
+export function selectChatPresetPayload(
+  importedPreset: ChatCompletionPreset | undefined,
+  fallbackPreset: ChatCompletionPreset,
+): ChatCompletionPreset {
+  return importedPreset ?? fallbackPreset;
+}
+
 function ChatBubble({ message }: { message: ChatMessageLine }) {
   const isUser = message.is_user === true;
   const content = getChatMessageDisplayText(message);
@@ -406,7 +635,7 @@ function EmptyChatState() {
         </div>
         <h2 className="text-base font-semibold">还没有消息</h2>
         <p className="mt-2 max-w-md text-sm leading-7 text-[var(--text-secondary)]">
-          填好接口与模型后发送第一条消息。页面会显示真实流式响应；如果浏览器被
+          选择角色与预设后发送第一条消息。页面会显示真实流式响应；如果浏览器被
           CORS 拦截，请换用允许 Web 调用的兼容端点。
         </p>
       </div>
@@ -460,6 +689,54 @@ function PanelTitle({
   );
 }
 
+function AssetSelectionSummary({
+  characterDetail,
+  isAssetLoading,
+  presetDetail,
+}: {
+  characterDetail: CharacterDetailSummary | null;
+  isAssetLoading: boolean;
+  presetDetail: PresetDetailSummary | null;
+}) {
+  const lines = [
+    characterDetail
+      ? `角色：${characterDetail.name} · ${characterDetail.specVersion} · 世界书 ${
+          characterDetail.embeddedBook?.entryCount ?? 0
+        }`
+      : "角色：本地调试角色",
+    presetDetail
+      ? `预设：${presetDetail.name} · prompt ${presetDetail.promptCount} · regex ${presetDetail.regexScriptCount}`
+      : "预设：最小 Chat Completion 预设",
+  ];
+
+  return (
+    <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
+      <div className="mb-2 flex items-center gap-2 font-medium text-[var(--text-primary)]">
+        <FileJson2 size={14} />
+        {isAssetLoading ? "正在读取本地资产" : "当前发送资产"}
+      </div>
+      {lines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </div>
+  );
+}
+
+function NoticeText({ kind, text }: { kind: "error" | "muted"; text: string }) {
+  return (
+    <p
+      className={[
+        "rounded-lg border px-3 py-2 text-xs leading-6",
+        kind === "error"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-secondary)]",
+      ].join(" ")}
+    >
+      {text}
+    </p>
+  );
+}
+
 function Field({
   label,
   value,
@@ -480,6 +757,38 @@ function Field({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+    </label>
+  );
+}
+
+function SelectField({
+  disabled = false,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  disabled?: boolean;
+  label: string;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="font-medium text-[var(--text-primary)]">{label}</span>
+      <select
+        className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
@@ -517,6 +826,10 @@ function formatChatSendError(error: unknown): string {
   }
 
   return `${String(error)}。请检查 API 配置。`;
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isAbortError(error: unknown): boolean {

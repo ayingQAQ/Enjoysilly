@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   createLocalChatCharacter,
   createMinimalChatPreset,
+  selectChatCharacterPayload,
+  selectChatPresetPayload,
 } from "./ChatScreen";
 
 describe("ChatScreen helpers", () => {
@@ -36,5 +38,34 @@ describe("ChatScreen helpers", () => {
     expect(character.data.name).toBe("my_silly 助手");
     expect(character.data.description).toBe("测试角色");
     expect(character.data.extensions).toEqual({});
+  });
+
+  it("prefers imported character and preset payloads when they are selected", () => {
+    const fallbackCharacter = createLocalChatCharacter({
+      name: "fallback",
+      description: "fallback",
+    });
+    const importedCharacter = createLocalChatCharacter({
+      name: "imported",
+      description: "imported",
+    });
+    const fallbackPreset = createMinimalChatPreset();
+    const importedPreset = {
+      ...createMinimalChatPreset(),
+      temperature: 0.2,
+    };
+
+    expect(selectChatCharacterPayload(importedCharacter, fallbackCharacter)).toBe(
+      importedCharacter,
+    );
+    expect(selectChatCharacterPayload(undefined, fallbackCharacter)).toBe(
+      fallbackCharacter,
+    );
+    expect(selectChatPresetPayload(importedPreset, fallbackPreset)).toBe(
+      importedPreset,
+    );
+    expect(selectChatPresetPayload(undefined, fallbackPreset)).toBe(
+      fallbackPreset,
+    );
   });
 });

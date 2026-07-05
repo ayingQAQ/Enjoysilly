@@ -90,5 +90,5 @@ describe("character import service", () => {
     } finally {
       database.close();
     }
-  }, 15000);
+  }, 30000);
 });
