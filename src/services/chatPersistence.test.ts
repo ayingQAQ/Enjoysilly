@@ -87,6 +87,38 @@ describe("chat persistence service", () => {
     );
   });
 
+  it("preserves source chat metadata unknown fields in snapshots", () => {
+    const sourceMetadata = {
+      user_name: "旧用户",
+      character_name: "旧角色",
+      create_date: "2026-07-04@10h00m00s",
+      chat_metadata: {
+        imported: true,
+      },
+      unknown_header_field: "keep",
+    };
+    const snapshot = createChatLogSnapshot({
+      messages: createMessages(),
+      userName: "新用户",
+      characterName: "新角色",
+      metadata: sourceMetadata,
+    });
+
+    expect(snapshot.metadata).toEqual({
+      user_name: "新用户",
+      character_name: "新角色",
+      create_date: "2026-07-04@10h00m00s",
+      chat_metadata: {
+        imported: true,
+      },
+      unknown_header_field: "keep",
+    });
+    expect(snapshot.metadata).not.toBe(sourceMetadata);
+    expect(snapshot.metadata.chat_metadata).not.toBe(
+      sourceMetadata.chat_metadata,
+    );
+  });
+
   it("creates stored chat metadata for a selected character", () => {
     const now = new Date(2026, 6, 5, 12, 0, 0);
     const stored = createStoredChatSnapshot({

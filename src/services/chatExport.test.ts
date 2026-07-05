@@ -64,6 +64,34 @@ describe("chat export service", () => {
     ).toBe("角色 2026-07-05 12h00m00s.jsonl");
   });
 
+  it("preserves source chat metadata when exporting", () => {
+    const artifact = createChatJsonlExport({
+      messages: createMessages(),
+      userName: "新用户",
+      characterName: "新角色",
+      metadata: {
+        user_name: "旧用户",
+        character_name: "旧角色",
+        create_date: "2026-07-04@10h00m00s",
+        chat_metadata: {
+          imported: true,
+        },
+        unknown_header_field: "keep",
+      },
+      now: new Date(2026, 6, 5, 12, 0, 0),
+    });
+
+    expect(artifact.chatLog.metadata).toEqual({
+      user_name: "新用户",
+      character_name: "新角色",
+      create_date: "2026-07-04@10h00m00s",
+      chat_metadata: {
+        imported: true,
+      },
+      unknown_header_field: "keep",
+    });
+  });
+
   it("uses a safe fallback when name and character are empty", () => {
     expect(createChatJsonlFileName({ now: undefined })).toMatch(/\.jsonl$/);
   });
