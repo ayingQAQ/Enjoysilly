@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createCharacterGreetingOptions,
+  createChatDraftStatus,
+  createGreetingChatMessage,
   createChatImportDatabaseOptions,
   createChatSaveSnapshotInput,
   createImportedChatScreenState,
   createLocalChatCharacter,
   createMinimalChatPreset,
+  deleteChatMessageAt,
   getChatArchiveFilterCharacterId,
+  getLastAssistantMessageIndex,
   selectChatCharacterPayload,
   selectChatPresetPayload,
-} from "./ChatScreen";
+  selectChatMessageSwipeAt,
+  updateChatMessageTextAt,
+} from "./chatScreenHelpers";
 import type { ChatMessageLine } from "../types/chat";
 
 describe("ChatScreen helpers", () => {
@@ -158,6 +165,276 @@ describe("ChatScreen helpers", () => {
   it("filters chat archives only when an imported character is selected", () => {
     expect(getChatArchiveFilterCharacterId("__local_character__")).toBeUndefined();
     expect(getChatArchiveFilterCharacterId("character-1")).toBe("character-1");
+  });
+
+  it("creates greeting options from first_mes and alternate_greetings", () => {
+    const character = createLocalChatCharacter({
+      name: "林黛玉",
+      description: "imported",
+    });
+
+    character.data.first_mes = "  {{user}}，你来了。 ";
+    character.data.alternate_greetings = ["", "  另一个问候  "];
+
+    expect(createCharacterGreetingOptions(character)).toEqual([
+      "{{user}}，你来了。",
+      "另一个问候",
+    ]);
+  });
+
+  it("creates a ST-compatible greeting message with swipes and macro replacement", () => {
+    const character = createLocalChatCharacter({
+      name: "  林黛玉  ",
+      description: "imported",
+    });
+    const before = structuredClone(character);
+
+    character.data.first_mes = "{{user}}，你来了。";
+    character.data.alternate_greetings = ["{{char}}在这里。"];
+
+    const message = createGreetingChatMessage({
+      character,
+      greetingIndex: 1,
+      now: new Date("2026-07-05T12:00:01"),
+      userName: "  见山  ",
+    });
+
+    expect(message).toEqual({
+      name: "林黛玉",
+      is_user: false,
+      send_date: "2026-07-05@12h00m01s",
+      mes: "林黛玉在这里。",
+      swipe_id: 1,
+      swipes: ["见山，你来了。", "林黛玉在这里。"],
+    });
+    expect(character).toEqual({
+      ...before,
+      data: {
+        ...before.data,
+        first_mes: "{{user}}，你来了。",
+        alternate_greetings: ["{{char}}在这里。"],
+      },
+    });
+  });
+
+  it("returns no greeting message when a character has no greetings", () => {
+    expect(
+      createGreetingChatMessage({
+        character: createLocalChatCharacter({
+          name: "无问候角色",
+          description: "local",
+        }),
+        userName: "User",
+      }),
+    ).toBeNull();
+  });
+
+  it("updates the selected message swipe without mutating original messages", () => {
+    const messages: ChatMessageLine[] = [
+      {
+        name: "User",
+        is_user: true,
+        mes: "保留",
+      },
+      {
+        name: "角色",
+        mes: "旧选中",
+        swipe_id: 1,
+        swipes: ["旧一", "旧选中"],
+        extra: {
+          keep: true,
+        },
+      },
+    ];
+    const before = structuredClone(messages);
+
+    const updated = updateChatMessageTextAt(messages, 1, "新内容");
+
+    expect(updated).toEqual([
+      messages[0],
+      {
+        name: "角色",
+        mes: "新内容",
+        swipe_id: 1,
+        swipes: ["旧一", "新内容"],
+        extra: {
+          keep: true,
+        },
+      },
+    ]);
+    expect(updated).not.toBe(messages);
+    expect(updated[1]).not.toBe(messages[1]);
+    expect(messages).toEqual(before);
+  });
+
+  it("creates a first swipe when editing a message without a valid swipe", () => {
+    const messages: ChatMessageLine[] = [
+      {
+        name: "角色",
+        mes: "旧内容",
+        swipe_id: 9,
+        swipes: ["旧一"],
+        custom_message_field: "keep",
+      },
+    ];
+
+    expect(updateChatMessageTextAt(messages, 0, "新内容")).toEqual([
+      {
+        name: "角色",
+        mes: "新内容",
+        swipe_id: 0,
+        swipes: ["新内容"],
+        custom_message_field: "keep",
+      },
+    ]);
+  });
+
+  it("deletes a message by index without mutating original messages", () => {
+    const messages: ChatMessageLine[] = [
+      { name: "User", is_user: true, mes: "第一条" },
+      { name: "角色", mes: "第二条" },
+      { name: "User", is_user: true, mes: "第三条" },
+    ];
+    const before = structuredClone(messages);
+
+    expect(deleteChatMessageAt(messages, 1)).toEqual([
+      messages[0],
+      messages[2],
+    ]);
+    expect(messages).toEqual(before);
+  });
+
+  it("selects the next and previous message swipe without mutating messages", () => {
+    const messages: ChatMessageLine[] = [
+      {
+        name: "角色",
+        mes: "第二条",
+        swipe_id: 1,
+        swipes: ["第一条", "第二条", "第三条"],
+        extra: {
+          keep: true,
+        },
+      },
+    ];
+    const before = structuredClone(messages);
+
+    expect(selectChatMessageSwipeAt(messages, 0, 1)).toEqual([
+      {
+        name: "角色",
+        mes: "第三条",
+        swipe_id: 2,
+        swipes: ["第一条", "第二条", "第三条"],
+        extra: {
+          keep: true,
+        },
+      },
+    ]);
+    expect(selectChatMessageSwipeAt(messages, 0, -1)).toEqual([
+      {
+        name: "角色",
+        mes: "第一条",
+        swipe_id: 0,
+        swipes: ["第一条", "第二条", "第三条"],
+        extra: {
+          keep: true,
+        },
+      },
+    ]);
+    expect(messages).toEqual(before);
+  });
+
+  it("wraps swipe selection and keeps messages without multiple swipes unchanged", () => {
+    expect(
+      selectChatMessageSwipeAt(
+        [
+          {
+            name: "角色",
+            mes: "第三条",
+            swipe_id: 2,
+            swipes: ["第一条", "第二条", "第三条"],
+          },
+        ],
+        0,
+        1,
+      ),
+    ).toEqual([
+      {
+        name: "角色",
+        mes: "第一条",
+        swipe_id: 0,
+        swipes: ["第一条", "第二条", "第三条"],
+      },
+    ]);
+    expect(
+      selectChatMessageSwipeAt(
+        [
+          {
+            name: "角色",
+            mes: "单条",
+            swipe_id: 0,
+            swipes: ["单条"],
+          },
+        ],
+        0,
+        1,
+      ),
+    ).toEqual([
+      {
+        name: "角色",
+        mes: "单条",
+        swipe_id: 0,
+        swipes: ["单条"],
+      },
+    ]);
+  });
+
+  it("finds the last assistant message index for continue", () => {
+    expect(
+      getLastAssistantMessageIndex([
+        { name: "System", is_system: true, mes: "系统" },
+        { name: "User", is_user: true, mes: "问题" },
+        { name: "Alice", mes: "回答一" },
+        { name: "User", is_user: true, mes: "追问" },
+        { name: "Alice", mes: "回答二" },
+      ]),
+    ).toBe(4);
+    expect(
+      getLastAssistantMessageIndex([
+        { name: "System", is_system: true, mes: "系统" },
+        { name: "User", is_user: true, mes: "问题" },
+      ]),
+    ).toBeUndefined();
+  });
+
+  it("summarizes local chat draft save status", () => {
+    expect(
+      createChatDraftStatus({
+        hasUnsavedChanges: false,
+        loadedArchiveName: null,
+        messageCount: 0,
+      }),
+    ).toBe("空白");
+    expect(
+      createChatDraftStatus({
+        hasUnsavedChanges: true,
+        loadedArchiveName: "已保存存档",
+        messageCount: 2,
+      }),
+    ).toBe("未保存更改");
+    expect(
+      createChatDraftStatus({
+        hasUnsavedChanges: false,
+        loadedArchiveName: "已保存存档",
+        messageCount: 2,
+      }),
+    ).toBe("已保存");
+    expect(
+      createChatDraftStatus({
+        hasUnsavedChanges: false,
+        loadedArchiveName: null,
+        messageCount: 2,
+      }),
+    ).toBe("未保存草稿");
   });
 
   it("binds imported JSONL chats only when an imported character is selected", () => {

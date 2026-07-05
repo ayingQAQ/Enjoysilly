@@ -11,8 +11,10 @@ import {
 } from "../lib/db";
 import {
   createChatArchiveSummary,
+  deleteChatArchive,
   loadChatArchiveDetail,
   loadChatArchiveSummaries,
+  renameChatArchive,
 } from "./chatArchive";
 
 const testDatabaseNames: string[] = [];
@@ -220,6 +222,90 @@ describe("chat archive service", () => {
     const database = await openMySillyDatabase(createTestDatabaseName());
 
     await expect(loadChatArchiveDetail("missing", database)).rejects.toThrow(
+      "找不到对话存档：missing",
+    );
+
+    database.close();
+  });
+
+  it("renames a chat archive without changing the stored payload", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const stored = createStoredChat({
+      id: "rename-me",
+      name: "旧名称",
+      characterId: "char-1",
+      updatedAt: "2026-07-05T13:00:00.000Z",
+    });
+
+    await saveChat(stored, database);
+
+    const renamed = await renameChatArchive({
+      chatId: "rename-me",
+      name: "  新名称  ",
+      now: new Date("2026-07-05T14:00:00.000Z"),
+      database,
+    });
+
+    expect(renamed.summary).toEqual(
+      expect.objectContaining({
+        id: "rename-me",
+        name: "新名称",
+        updatedAt: "2026-07-05T14:00:00.000Z",
+      }),
+    );
+    await expect(loadChatArchiveDetail("rename-me", database)).resolves.toEqual(
+      expect.objectContaining({
+        stored: expect.objectContaining({
+          name: "新名称",
+          createdAt: stored.createdAt,
+          payload: stored.payload,
+        }),
+      }),
+    );
+
+    database.close();
+  });
+
+  it("rejects empty archive names", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+
+    await expect(
+      renameChatArchive({
+        chatId: "rename-me",
+        name: "   ",
+        database,
+      }),
+    ).rejects.toThrow("对话存档名称不能为空");
+
+    database.close();
+  });
+
+  it("deletes only the selected chat archive", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    await seedChats(database);
+
+    await expect(deleteChatArchive("newer", database)).resolves.toEqual(
+      expect.objectContaining({
+        id: "newer",
+        name: "新对话",
+      }),
+    );
+    await expect(loadChatArchiveDetail("newer", database)).rejects.toThrow(
+      "找不到对话存档：newer",
+    );
+    await expect(loadChatArchiveDetail("older", database)).resolves.toEqual(
+      expect.objectContaining({
+        summary: expect.objectContaining({ id: "older" }),
+      }),
+    );
+
+    database.close();
+  });
+
+  it("reports a missing chat archive before deleting", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+
+    await expect(deleteChatArchive("missing", database)).rejects.toThrow(
       "找不到对话存档：missing",
     );
 

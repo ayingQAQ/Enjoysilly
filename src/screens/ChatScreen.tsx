@@ -6,16 +6,15 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import {
   Archive,
   Bot,
   Download,
-  FileJson2,
   KeyRound,
   Loader2,
   MessageSquare,
+  Plus,
   RotateCcw,
   Save,
   Send,
@@ -25,7 +24,11 @@ import {
 } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
-import { runStreamingChatTurn } from "../lib/chatStreaming";
+import {
+  runStreamingChatContinue,
+  runStreamingChatReroll,
+  runStreamingChatTurn,
+} from "../lib/chatStreaming";
 import { downloadBytesToFile } from "../lib/browserDownload";
 import {
   loadCharacterAssetSummaries,
@@ -43,35 +46,64 @@ import {
 } from "../services/presetDetails";
 import {
   saveChatSnapshotToDatabase,
-  type SaveChatSnapshotToDatabaseInput,
 } from "../services/chatPersistence";
+import { importChatToDatabase } from "../services/chatImport";
 import {
-  importChatToDatabase,
-  type ImportChatToDatabaseOptions,
-} from "../services/chatImport";
-import {
+  deleteChatArchive,
   loadChatArchiveDetail,
   loadChatArchiveSummaries,
+  renameChatArchive,
   type ChatArchiveSummary,
 } from "../services/chatArchive";
 import { createChatJsonlExport } from "../services/chatExport";
-import type {
-  ChatMessageLine,
-  ChatMetadataLine,
-  SillyTavernChatLog,
-} from "../types/chat";
-import type { CharacterCard } from "../types/character";
-import type { ChatCompletionPreset } from "../types/preset";
-
-const localCharacterOptionId = "__local_character__";
-const minimalPresetOptionId = "__minimal_preset__";
-const defaultBaseUrl = "https://api.openai.com/v1";
-const defaultModel = "gpt-4.1-mini";
-const defaultUserName = "User";
-const defaultCharacterName = "my_silly 助手";
-const defaultCharacterDescription =
-  "你是 my_silly 的本地调试助手。回复应当清晰、简洁，并保持中文交流。";
-const defaultPersonaDescription = "用户正在测试 my_silly 的 OpenAI 兼容实时对话链路。";
+import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
+import {
+  AssetSelectionSummary,
+  ChatArchiveList,
+  ChatBubble,
+  EmptyChatState,
+  Field,
+  GreetingPicker,
+  NoticeText,
+  PanelTitle,
+  SelectField,
+  SummaryTile,
+  TextAreaField,
+} from "./ChatScreenPanels";
+import {
+  cloneChatMessages,
+  cloneChatMetadata,
+  createCharacterGreetingOptions,
+  createChatDraftStatus,
+  createChatImportDatabaseOptions,
+  createChatSaveSnapshotInput,
+  createGreetingChatMessage,
+  createImportedChatScreenState,
+  createLocalChatCharacter,
+  createMinimalChatPreset,
+  defaultBaseUrl,
+  defaultCharacterDescription,
+  defaultCharacterName,
+  defaultModel,
+  defaultPersonaDescription,
+  defaultUserName,
+  deleteChatMessageAt,
+  formatChatExportError,
+  formatChatImportError,
+  formatChatSaveError,
+  formatChatSendError,
+  formatUnknownError,
+  getChatArchiveFilterCharacterId,
+  getLastAssistantMessageIndex,
+  isAbortError,
+  localCharacterOptionId,
+  minimalPresetOptionId,
+  normalizeName,
+  selectChatCharacterPayload,
+  selectChatMessageSwipeAt,
+  selectChatPresetPayload,
+  updateChatMessageTextAt,
+} from "./chatScreenHelpers";
 
 export function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessageLine[]>([]);
@@ -93,11 +125,13 @@ export function ChatScreen() {
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [isAssetLoading, setIsAssetLoading] = useState(true);
   const [isArchiveLoading, setIsArchiveLoading] = useState(true);
   const [loadingArchiveId, setLoadingArchiveId] = useState<string | null>(null);
+  const [archiveActionId, setArchiveActionId] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterAssetSummary[]>([]);
   const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
   const [chatArchives, setChatArchives] = useState<ChatArchiveSummary[]>([]);
@@ -137,6 +171,10 @@ export function ChatScreen() {
     selectedPresetDetail?.stored.payload,
     fallbackPreset,
   );
+  const greetingOptions = useMemo(
+    () => createCharacterGreetingOptions(activeCharacter),
+    [activeCharacter],
+  );
   const archiveFilterCharacterId =
     getChatArchiveFilterCharacterId(selectedCharacterId);
   const isCharacterReady =
@@ -154,6 +192,18 @@ export function ChatScreen() {
   const canSave =
     !isStreaming && !isSaving && !isImportingChat && messages.length > 0;
   const canExport = !isStreaming && !isImportingChat && messages.length > 0;
+  const lastAssistantMessageIndex = getLastAssistantMessageIndex(messages);
+  const canContinue =
+    !isStreaming &&
+    !isImportingChat &&
+    isCharacterReady &&
+    isPresetReady &&
+    lastAssistantMessageIndex !== undefined;
+  const draftStatus = createChatDraftStatus({
+    hasUnsavedChanges,
+    loadedArchiveName,
+    messageCount: messages.length,
+  });
 
   const refreshChatArchives = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -320,6 +370,7 @@ export function ChatScreen() {
           signal: controller.signal,
         })) {
           setMessages(update.messages);
+          setHasUnsavedChanges(true);
 
           if (update.kind === "started") {
             setStatusText("模型已连接，等待首个 token");
@@ -423,6 +474,7 @@ export function ChatScreen() {
         setLoadedArchiveId(importedState.loadedArchiveId);
         setLoadedArchiveName(importedState.loadedArchiveName);
         setLoadedChatMetadata(importedState.metadata);
+        setHasUnsavedChanges(false);
         setSaveMessage(
           `已导入并保存：${imported.stored.name}（${imported.chat.messages.length} 行消息）`,
         );
@@ -461,6 +513,7 @@ export function ChatScreen() {
       setSaveMessage(`已保存：${stored.name}`);
       setLoadedArchiveId(stored.id);
       setLoadedArchiveName(stored.name);
+      setHasUnsavedChanges(false);
       setStatusText("对话已保存到本地数据库");
       await refreshChatArchives({ silent: true });
     } catch (saveError: unknown) {
@@ -521,7 +574,7 @@ export function ChatScreen() {
 
   const handleLoadArchive = useCallback(
     async (archiveId: string) => {
-      if (isStreaming || loadingArchiveId) {
+      if (isStreaming || loadingArchiveId || archiveActionId) {
         return;
       }
 
@@ -534,9 +587,10 @@ export function ChatScreen() {
         const detail = await loadChatArchiveDetail(archiveId);
         const metadata = detail.stored.payload.metadata;
 
-        setMessages(detail.stored.payload.messages);
+        setMessages(cloneChatMessages(detail.stored.payload.messages));
         setLoadedChatMetadata(cloneChatMetadata(metadata));
         setUserName(normalizeName(metadata.user_name, defaultUserName));
+        setHasUnsavedChanges(false);
 
         if (selectedCharacterId === localCharacterOptionId) {
           setCharacterName(
@@ -554,11 +608,20 @@ export function ChatScreen() {
         setLoadingArchiveId(null);
       }
     },
-    [isStreaming, loadingArchiveId, selectedCharacterId],
+    [archiveActionId, isStreaming, loadingArchiveId, selectedCharacterId],
   );
 
-  const handleReset = useCallback(() => {
-    if (isStreaming) {
+  const handleNewChat = useCallback(() => {
+    if (isStreaming || isImportingChat) {
+      return;
+    }
+
+    if (
+      messages.length > 0 &&
+      !window.confirm(
+        "新建空白对话会清空当前页面消息。已保存的本地存档不会被删除，是否继续？",
+      )
+    ) {
       return;
     }
 
@@ -568,8 +631,393 @@ export function ChatScreen() {
     setLoadedArchiveId(null);
     setLoadedArchiveName(null);
     setLoadedChatMetadata(null);
+    setHasUnsavedChanges(false);
     setStatusText("等待输入");
-  }, [isStreaming]);
+  }, [isImportingChat, isStreaming, messages.length]);
+
+  const handleApplyGreeting = useCallback(
+    (greetingIndex: number) => {
+      if (isStreaming || isImportingChat) {
+        return;
+      }
+
+      if (
+        messages.length > 0 &&
+        !window.confirm(
+          "切换首条问候会替换当前页面消息。已保存的本地存档不会被删除，是否继续？",
+        )
+      ) {
+        return;
+      }
+
+      const greetingMessage = createGreetingChatMessage({
+        character: activeCharacter,
+        greetingIndex,
+        userName: normalizeName(userName, defaultUserName),
+      });
+
+      if (!greetingMessage) {
+        setError("当前角色没有可用的 first_mes 或 alternate_greetings。");
+        return;
+      }
+
+      setMessages([greetingMessage]);
+      setError(null);
+      setSaveMessage(null);
+      setLoadedArchiveId(null);
+      setLoadedArchiveName(null);
+      setLoadedChatMetadata(null);
+      setHasUnsavedChanges(true);
+      setStatusText("已应用角色首条问候");
+    },
+    [activeCharacter, isImportingChat, isStreaming, messages.length, userName],
+  );
+
+  const handleEditMessage = useCallback(
+    (messageIndex: number) => {
+      if (isStreaming || isImportingChat) {
+        return;
+      }
+
+      const message = messages[messageIndex];
+
+      if (!message) {
+        return;
+      }
+
+      const currentText = getChatMessageDisplayText(message);
+      const nextText = window.prompt("编辑当前消息内容", currentText);
+
+      if (nextText === null || nextText === currentText) {
+        return;
+      }
+
+      setMessages((currentMessages) =>
+        updateChatMessageTextAt(currentMessages, messageIndex, nextText),
+      );
+      setSaveMessage(null);
+      setError(null);
+      setHasUnsavedChanges(true);
+      setStatusText("当前页面消息已编辑，保存后会写入本地存档");
+    },
+    [isImportingChat, isStreaming, messages],
+  );
+
+  const handleDeleteMessage = useCallback(
+    (messageIndex: number) => {
+      if (isStreaming || isImportingChat) {
+        return;
+      }
+
+      const message = messages[messageIndex];
+
+      if (!message) {
+        return;
+      }
+
+      if (
+        !window.confirm(
+          "确定删除这条消息吗？删除只影响当前页面，保存后才会写入本地存档。",
+        )
+      ) {
+        return;
+      }
+
+      setMessages((currentMessages) =>
+        deleteChatMessageAt(currentMessages, messageIndex),
+      );
+      setSaveMessage(null);
+      setError(null);
+      setHasUnsavedChanges(true);
+      setStatusText("当前页面消息已删除，保存后会写入本地存档");
+    },
+    [isImportingChat, isStreaming, messages],
+  );
+
+  const handleSelectMessageSwipe = useCallback(
+    (messageIndex: number, direction: -1 | 1) => {
+      if (isStreaming || isImportingChat) {
+        return;
+      }
+
+      setMessages((currentMessages) =>
+        selectChatMessageSwipeAt(currentMessages, messageIndex, direction),
+      );
+      setSaveMessage(null);
+      setError(null);
+      setHasUnsavedChanges(true);
+      setStatusText("已切换当前消息 swipe，保存后会写入本地存档");
+    },
+    [isImportingChat, isStreaming],
+  );
+
+  const handleRerollMessage = useCallback(
+    async (messageIndex: number) => {
+      if (isStreaming || isImportingChat || !isCharacterReady || !isPresetReady) {
+        return;
+      }
+
+      const targetMessage = messages[messageIndex];
+
+      if (
+        !targetMessage ||
+        targetMessage.is_user === true ||
+        targetMessage.is_system === true
+      ) {
+        return;
+      }
+
+      const trimmedBaseUrl = baseUrl.trim();
+      const trimmedModel = model.trim();
+
+      if (!trimmedBaseUrl) {
+        setError("请先填写 OpenAI 兼容 API Base URL。");
+        return;
+      }
+
+      if (!trimmedModel) {
+        setError("请先填写模型名称。");
+        return;
+      }
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setIsStreaming(true);
+      setStatusText("正在重新生成当前消息");
+      setError(null);
+      setSaveMessage(null);
+
+      try {
+        for await (const update of runStreamingChatReroll({
+          assistantMessageIndex: messageIndex,
+          baseUrl: trimmedBaseUrl,
+          apiKey,
+          model: trimmedModel,
+          preset: activePreset,
+          character: activeCharacter,
+          messages,
+          userName: normalizeName(userName, defaultUserName),
+          personaDescription,
+          signal: controller.signal,
+        })) {
+          setMessages(update.messages);
+          setHasUnsavedChanges(true);
+
+          if (update.kind === "started") {
+            setStatusText("已创建新的 swipe，等待模型响应");
+          } else if (update.kind === "delta") {
+            setStatusText("正在接收重新生成内容");
+          } else {
+            setStatusText(
+              update.finishReason
+                ? `重新生成完成：${update.finishReason}`
+                : "重新生成完成",
+            );
+          }
+        }
+      } catch (rerollError: unknown) {
+        if (isAbortError(rerollError)) {
+          setStatusText("已停止重新生成");
+          return;
+        }
+
+        setError(formatChatSendError(rerollError));
+        setStatusText("重新生成失败");
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
+        setIsStreaming(false);
+      }
+    },
+    [
+      activeCharacter,
+      activePreset,
+      apiKey,
+      baseUrl,
+      isCharacterReady,
+      isImportingChat,
+      isPresetReady,
+      isStreaming,
+      messages,
+      model,
+      personaDescription,
+      userName,
+    ],
+  );
+
+  const handleContinueMessage = useCallback(async () => {
+    if (!canContinue || lastAssistantMessageIndex === undefined) {
+      return;
+    }
+
+    const trimmedBaseUrl = baseUrl.trim();
+    const trimmedModel = model.trim();
+
+    if (!trimmedBaseUrl) {
+      setError("请先填写 OpenAI 兼容 API Base URL。");
+      return;
+    }
+
+    if (!trimmedModel) {
+      setError("请先填写模型名称。");
+      return;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsStreaming(true);
+    setStatusText("正在继续最后一条回复");
+    setError(null);
+    setSaveMessage(null);
+
+    try {
+      for await (const update of runStreamingChatContinue({
+        assistantMessageIndex: lastAssistantMessageIndex,
+        baseUrl: trimmedBaseUrl,
+        apiKey,
+        model: trimmedModel,
+        preset: activePreset,
+        character: activeCharacter,
+        messages,
+        userName: normalizeName(userName, defaultUserName),
+        personaDescription,
+        signal: controller.signal,
+      })) {
+        setMessages(update.messages);
+        setHasUnsavedChanges(true);
+
+        if (update.kind === "started") {
+          setStatusText("已请求继续回复，等待模型响应");
+        } else if (update.kind === "delta") {
+          setStatusText("正在接收继续内容");
+        } else {
+          setStatusText(
+            update.finishReason
+              ? `继续完成：${update.finishReason}`
+              : "继续完成",
+          );
+        }
+      }
+    } catch (continueError: unknown) {
+      if (isAbortError(continueError)) {
+        setStatusText("已停止继续");
+        return;
+      }
+
+      setError(formatChatSendError(continueError));
+      setStatusText("继续失败");
+    } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      setIsStreaming(false);
+    }
+  }, [
+    activeCharacter,
+    activePreset,
+    apiKey,
+    baseUrl,
+    canContinue,
+    lastAssistantMessageIndex,
+    messages,
+    model,
+    personaDescription,
+    userName,
+  ]);
+
+  const handleRenameArchive = useCallback(
+    async (archive: ChatArchiveSummary) => {
+      if (isStreaming || loadingArchiveId || archiveActionId) {
+        return;
+      }
+
+      const nextName = window.prompt("请输入新的对话存档名称", archive.name);
+
+      if (nextName === null || nextName === archive.name) {
+        return;
+      }
+
+      setArchiveActionId(archive.id);
+      setError(null);
+      setSaveMessage(null);
+      setArchiveError(null);
+
+      try {
+        const renamed = await renameChatArchive({
+          chatId: archive.id,
+          name: nextName,
+        });
+
+        if (loadedArchiveId === archive.id) {
+          setLoadedArchiveName(renamed.summary.name);
+        }
+
+        setSaveMessage(`已重命名存档：${renamed.summary.name}`);
+        setStatusText("对话存档已重命名");
+        await refreshChatArchives({ silent: true });
+      } catch (renameError: unknown) {
+        setArchiveError(formatUnknownError(renameError));
+        setStatusText("重命名存档失败");
+      } finally {
+        setArchiveActionId(null);
+      }
+    },
+    [
+      archiveActionId,
+      isStreaming,
+      loadedArchiveId,
+      loadingArchiveId,
+      refreshChatArchives,
+    ],
+  );
+
+  const handleDeleteArchive = useCallback(
+    async (archive: ChatArchiveSummary) => {
+      if (isStreaming || loadingArchiveId || archiveActionId) {
+        return;
+      }
+
+      if (
+        !window.confirm(
+          `确定删除本地对话存档「${archive.name}」吗？此操作不会修改角色卡、预设或 JSONL 导出文件。`,
+        )
+      ) {
+        return;
+      }
+
+      setArchiveActionId(archive.id);
+      setError(null);
+      setSaveMessage(null);
+      setArchiveError(null);
+
+      try {
+        const deleted = await deleteChatArchive(archive.id);
+
+        if (loadedArchiveId === archive.id) {
+          setLoadedArchiveId(null);
+          setLoadedArchiveName(null);
+          setLoadedChatMetadata(null);
+        }
+
+        setSaveMessage(`已删除存档：${deleted.name}`);
+        setStatusText("对话存档已删除");
+        await refreshChatArchives({ silent: true });
+      } catch (deleteError: unknown) {
+        setArchiveError(formatUnknownError(deleteError));
+        setStatusText("删除存档失败");
+      } finally {
+        setArchiveActionId(null);
+      }
+    },
+    [
+      archiveActionId,
+      isStreaming,
+      loadedArchiveId,
+      loadingArchiveId,
+      refreshChatArchives,
+    ],
+  );
 
   return (
     <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-5 py-6 lg:px-8">
@@ -589,8 +1037,8 @@ export function ChatScreen() {
           </div>
           <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
             <SummaryTile label="消息行" value={messages.length} />
+            <SummaryTile label="草稿" value={draftStatus} compact />
             <SummaryTile label="模型" value={model.trim() || "未设置"} compact />
-            <SummaryTile label="状态" value={statusText} compact />
           </div>
         </div>
       </div>
@@ -610,6 +1058,11 @@ export function ChatScreen() {
                 {loadedArchiveName ? (
                   <p className="truncate text-xs text-[var(--text-muted)]">
                     已加载：{loadedArchiveName}
+                  </p>
+                ) : null}
+                {hasUnsavedChanges && messages.length > 0 ? (
+                  <p className="truncate text-xs text-amber-600">
+                    有未保存更改，点击保存写入本地存档
                   </p>
                 ) : null}
               </div>
@@ -646,6 +1099,15 @@ export function ChatScreen() {
               </button>
               <button
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canContinue}
+                type="button"
+                onClick={() => void handleContinueMessage()}
+              >
+                <RotateCcw size={14} />
+                继续
+              </button>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canSave}
                 type="button"
                 onClick={() => void handleSave()}
@@ -659,12 +1121,12 @@ export function ChatScreen() {
               </button>
               <button
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isStreaming || messages.length === 0}
+                disabled={isStreaming || isImportingChat}
                 type="button"
-                onClick={handleReset}
+                onClick={handleNewChat}
               >
-                <RotateCcw size={14} />
-                清空
+                <Plus size={14} />
+                新建
               </button>
             </div>
           </div>
@@ -675,7 +1137,16 @@ export function ChatScreen() {
             ) : (
               <div className="space-y-4">
                 {messages.map((message, index) => (
-                  <ChatBubble key={`${message.name}-${index}`} message={message} />
+                  <ChatBubble
+                    key={`${message.name}-${index}`}
+                    disabled={isStreaming || isImportingChat}
+                    message={message}
+                    onDelete={() => handleDeleteMessage(index)}
+                    onEdit={() => handleEditMessage(index)}
+                    onReroll={() => void handleRerollMessage(index)}
+                    onSwipeNext={() => handleSelectMessageSwipe(index, 1)}
+                    onSwipePrevious={() => handleSelectMessageSwipe(index, -1)}
+                  />
                 ))}
               </div>
             )}
@@ -805,17 +1276,33 @@ export function ChatScreen() {
             <PanelTitle
               icon={<Archive size={17} />}
               title="本地存档"
-              subtitle="只读列出并加载 chats store；不重命名、不删除、不自动保存。"
+              subtitle="管理 chats store 中的本地对话；不自动保存，不修改导入导出格式。"
             />
           </div>
           {archiveError ? <NoticeText kind="error" text={archiveError} /> : null}
           <ChatArchiveList
             archives={chatArchives}
             isLoading={isArchiveLoading}
+            actionArchiveId={archiveActionId}
             loadingArchiveId={loadingArchiveId}
             selectedArchiveId={loadedArchiveId}
             onLoad={(archiveId) => void handleLoadArchive(archiveId)}
-            disabled={isStreaming}
+            onRename={(archive) => void handleRenameArchive(archive)}
+            onDelete={(archive) => void handleDeleteArchive(archive)}
+            disabled={isStreaming || isImportingChat}
+          />
+
+          <div className="border-t border-[var(--border-soft)] pt-4">
+            <PanelTitle
+              icon={<MessageSquare size={17} />}
+              title="首条问候"
+              subtitle="从角色卡 first_mes 与 alternate_greetings 生成 ST 兼容首条消息。"
+            />
+          </div>
+          <GreetingPicker
+            disabled={isStreaming || isImportingChat}
+            greetings={greetingOptions}
+            onApply={handleApplyGreeting}
           />
 
           <div className="border-t border-[var(--border-soft)] pt-4">
@@ -855,505 +1342,4 @@ export function ChatScreen() {
       </div>
     </section>
   );
-}
-
-export function createLocalChatCharacter(input: {
-  name?: string;
-  description?: string;
-}): CharacterCard {
-  return {
-    spec: "chara_card_v2",
-    spec_version: "2.0",
-    data: {
-      name: normalizeName(input.name, defaultCharacterName),
-      description: input.description?.trim() || defaultCharacterDescription,
-      first_mes: "",
-      extensions: {},
-    },
-  };
-}
-
-export function createMinimalChatPreset(): ChatCompletionPreset {
-  return {
-    temperature: 0.7,
-    top_p: 1,
-    openai_max_tokens: 800,
-    stream_openai: true,
-    prompts: [
-      {
-        identifier: "main",
-        name: "主系统提示",
-        role: "system",
-        content:
-          "你正在扮演 {{char}}，与 {{user}} 进行自然对话。回复应清晰、具体，并遵守角色描述。",
-        enabled: true,
-      },
-      {
-        identifier: "personaDescription",
-        name: "用户 persona",
-        role: "system",
-        marker: true,
-        enabled: true,
-      },
-      {
-        identifier: "charDescription",
-        name: "角色描述",
-        role: "system",
-        marker: true,
-        enabled: true,
-      },
-      {
-        identifier: "chatHistory",
-        name: "聊天记录",
-        role: "user",
-        marker: true,
-        enabled: true,
-      },
-    ],
-    prompt_order: [
-      {
-        character_id: 100001,
-        order: [
-          { identifier: "main", enabled: true },
-          { identifier: "personaDescription", enabled: true },
-          { identifier: "charDescription", enabled: true },
-          { identifier: "chatHistory", enabled: true },
-        ],
-      },
-    ],
-  };
-}
-
-export function selectChatCharacterPayload(
-  importedCharacter: CharacterCard | undefined,
-  fallbackCharacter: CharacterCard,
-): CharacterCard {
-  return importedCharacter ?? fallbackCharacter;
-}
-
-export function selectChatPresetPayload(
-  importedPreset: ChatCompletionPreset | undefined,
-  fallbackPreset: ChatCompletionPreset,
-): ChatCompletionPreset {
-  return importedPreset ?? fallbackPreset;
-}
-
-export function getChatArchiveFilterCharacterId(
-  selectedCharacterId: string,
-): string | undefined {
-  return selectedCharacterId === localCharacterOptionId
-    ? undefined
-    : selectedCharacterId;
-}
-
-export function createChatSaveSnapshotInput(input: {
-  activeCharacter: CharacterCard;
-  chatMetadata?: ChatMetadataLine;
-  messages: ChatMessageLine[];
-  selectedCharacterId: string;
-  userName: string;
-}): SaveChatSnapshotToDatabaseInput {
-  const snapshotInput: SaveChatSnapshotToDatabaseInput = {
-    messages: input.messages,
-    userName: normalizeName(input.userName, defaultUserName),
-    characterName: normalizeName(
-      input.activeCharacter.data.name,
-      defaultCharacterName,
-    ),
-    characterId:
-      input.selectedCharacterId === localCharacterOptionId
-        ? undefined
-        : input.selectedCharacterId,
-  };
-
-  if (input.chatMetadata) {
-    snapshotInput.metadata = cloneChatMetadata(input.chatMetadata);
-  }
-
-  return snapshotInput;
-}
-
-export function createChatImportDatabaseOptions(
-  selectedCharacterId: string,
-): Pick<ImportChatToDatabaseOptions, "characterId"> {
-  return {
-    characterId:
-      selectedCharacterId === localCharacterOptionId
-        ? undefined
-        : selectedCharacterId,
-  };
-}
-
-export function createImportedChatScreenState(input: {
-  chat: SillyTavernChatLog;
-  selectedCharacterId: string;
-  storedId: string;
-  storedName: string;
-}): {
-  messages: ChatMessageLine[];
-  userName: string;
-  characterName?: string;
-  metadata: ChatMetadataLine;
-  loadedArchiveId: string;
-  loadedArchiveName: string;
-} {
-  const metadata = input.chat.metadata;
-  const shouldSyncCharacterName =
-    input.selectedCharacterId === localCharacterOptionId;
-
-  return {
-    messages: cloneChatMessages(input.chat.messages),
-    userName: normalizeName(metadata.user_name, defaultUserName),
-    characterName: shouldSyncCharacterName
-      ? normalizeName(metadata.character_name, defaultCharacterName)
-      : undefined,
-    metadata: cloneChatMetadata(metadata),
-    loadedArchiveId: input.storedId,
-    loadedArchiveName: input.storedName,
-  };
-}
-
-function ChatBubble({ message }: { message: ChatMessageLine }) {
-  const isUser = message.is_user === true;
-  const content = getChatMessageDisplayText(message);
-
-  return (
-    <article className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}>
-      <div
-        className={[
-          "max-w-[88%] rounded-lg px-4 py-3 shadow-sm",
-          isUser
-            ? "bg-[var(--accent)] text-white"
-            : "border border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-primary)]",
-        ].join(" ")}
-      >
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs opacity-80">
-          <span className="font-medium">{message.name}</span>
-          {message.send_date ? <span>{message.send_date}</span> : null}
-        </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-7">
-          {content || "正在生成..."}
-        </p>
-      </div>
-    </article>
-  );
-}
-
-function EmptyChatState() {
-  return (
-    <div className="grid min-h-[360px] place-items-center rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-6 text-center">
-      <div>
-        <div className="mx-auto mb-4 grid size-12 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
-          <MessageSquare size={22} />
-        </div>
-        <h2 className="text-base font-semibold">还没有消息</h2>
-        <p className="mt-2 max-w-md text-sm leading-7 text-[var(--text-secondary)]">
-          选择角色与预设后发送第一条消息。页面会显示真实流式响应；如果浏览器被
-          CORS 拦截，请换用允许 Web 调用的兼容端点。
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function SummaryTile({
-  label,
-  value,
-  compact = false,
-}: {
-  label: string;
-  value: number | string;
-  compact?: boolean;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg bg-[var(--surface-muted)] px-3 py-2">
-      <p
-        className={[
-          "truncate font-semibold",
-          compact ? "text-sm" : "text-xl",
-        ].join(" ")}
-      >
-        {value}
-      </p>
-      <p className="text-xs text-[var(--text-muted)]">{label}</p>
-    </div>
-  );
-}
-
-function PanelTitle({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: ReactNode;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="mb-3 flex items-start gap-2">
-      <div className="mt-0.5 text-[var(--accent-strong)]">{icon}</div>
-      <div>
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-          {subtitle}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function AssetSelectionSummary({
-  characterDetail,
-  isAssetLoading,
-  presetDetail,
-}: {
-  characterDetail: CharacterDetailSummary | null;
-  isAssetLoading: boolean;
-  presetDetail: PresetDetailSummary | null;
-}) {
-  const lines = [
-    characterDetail
-      ? `角色：${characterDetail.name} · ${characterDetail.specVersion} · 世界书 ${
-          characterDetail.embeddedBook?.entryCount ?? 0
-        }`
-      : "角色：本地调试角色",
-    presetDetail
-      ? `预设：${presetDetail.name} · prompt ${presetDetail.promptCount} · regex ${presetDetail.regexScriptCount}`
-      : "预设：最小 Chat Completion 预设",
-  ];
-
-  return (
-    <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
-      <div className="mb-2 flex items-center gap-2 font-medium text-[var(--text-primary)]">
-        <FileJson2 size={14} />
-        {isAssetLoading ? "正在读取本地资产" : "当前发送资产"}
-      </div>
-      {lines.map((line) => (
-        <p key={line}>{line}</p>
-      ))}
-    </div>
-  );
-}
-
-function ChatArchiveList({
-  archives,
-  disabled,
-  isLoading,
-  loadingArchiveId,
-  selectedArchiveId,
-  onLoad,
-}: {
-  archives: ChatArchiveSummary[];
-  disabled: boolean;
-  isLoading: boolean;
-  loadingArchiveId: string | null;
-  selectedArchiveId: string | null;
-  onLoad: (archiveId: string) => void;
-}) {
-  if (isLoading) {
-    return (
-      <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
-        正在读取本地存档...
-      </div>
-    );
-  }
-
-  if (archives.length === 0) {
-    return (
-      <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
-        当前筛选下还没有已保存的对话。
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-      {archives.map((archive) => {
-        const isSelected = archive.id === selectedArchiveId;
-        const isLoadingArchive = archive.id === loadingArchiveId;
-
-        return (
-          <div
-            key={archive.id}
-            className={[
-              "rounded-lg border p-3 text-xs leading-5",
-              isSelected
-                ? "border-[var(--accent)] bg-[var(--accent-weak)]"
-                : "border-[var(--border-soft)] bg-[var(--surface-muted)]",
-            ].join(" ")}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate font-medium text-[var(--text-primary)]">
-                  {archive.name}
-                </p>
-                <p className="mt-1 text-[var(--text-muted)]">
-                  {archive.characterName ?? "未知角色"} · {archive.messageCount} 行
-                </p>
-              </div>
-              <button
-                className="shrink-0 rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-1 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={disabled || Boolean(loadingArchiveId)}
-                type="button"
-                onClick={() => onLoad(archive.id)}
-              >
-                {isLoadingArchive ? "读取中" : isSelected ? "已加载" : "加载"}
-              </button>
-            </div>
-            {archive.lastMessagePreview ? (
-              <p className="mt-2 max-h-10 overflow-hidden text-[var(--text-secondary)]">
-                {archive.lastMessagePreview}
-              </p>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function NoticeText({ kind, text }: { kind: "error" | "muted"; text: string }) {
-  return (
-    <p
-      className={[
-        "rounded-lg border px-3 py-2 text-xs leading-6",
-        kind === "error"
-          ? "border-red-200 bg-red-50 text-red-700"
-          : "border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-secondary)]",
-      ].join(" ")}
-    >
-      {text}
-    </p>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: "text" | "password";
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="font-medium text-[var(--text-primary)]">{label}</span>
-      <input
-        className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm outline-none transition focus:border-[var(--accent)]"
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function SelectField({
-  disabled = false,
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  disabled?: boolean;
-  label: string;
-  options: Array<{ label: string; value: string }>;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="font-medium text-[var(--text-primary)]">{label}</span>
-      <select
-        className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm outline-none transition focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={disabled}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function TextAreaField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="font-medium text-[var(--text-primary)]">{label}</span>
-      <textarea
-        className="mt-2 min-h-24 w-full resize-y rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm leading-6 outline-none transition focus:border-[var(--accent)]"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function normalizeName(value: string | undefined, fallback: string): string {
-  const normalized = value?.trim();
-
-  return normalized && normalized.length > 0 ? normalized : fallback;
-}
-
-function formatChatSendError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.message}。请检查 API Base URL、模型名、API Key，以及端点是否允许浏览器 CORS 请求。`;
-  }
-
-  return `${String(error)}。请检查 API 配置。`;
-}
-
-function formatChatSaveError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.message}。保存对话失败，请检查浏览器是否允许 IndexedDB。`;
-  }
-
-  return `${String(error)}。保存对话失败。`;
-}
-
-function formatChatExportError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.message}。导出对话失败，请检查浏览器下载权限。`;
-  }
-
-  return `${String(error)}。导出对话失败。`;
-}
-
-function formatChatImportError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.message}。导入对话失败，请确认文件是 SillyTavern JSONL 格式。`;
-  }
-
-  return `${String(error)}。导入对话失败。`;
-}
-
-function formatUnknownError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
-function cloneChatMessages(messages: ChatMessageLine[]): ChatMessageLine[] {
-  return structuredClone(messages) as ChatMessageLine[];
-}
-
-function cloneChatMetadata(metadata: ChatMetadataLine): ChatMetadataLine {
-  return structuredClone(metadata) as ChatMetadataLine;
 }
