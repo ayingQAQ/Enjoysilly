@@ -1,3 +1,4 @@
+import type { ChatMessageLine } from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type {
   ChatCompletionPreset,
@@ -6,6 +7,12 @@ import type {
   PromptRole,
 } from "../types/preset";
 import { replaceMacros, type MacroReplacementContext } from "./macros";
+import {
+  scanWorldInfo,
+  type WorldInfoScanInputEntry,
+  type WorldInfoScanOptions,
+  type WorldInfoScanResult,
+} from "./worldInfoScan";
 
 export interface ChatCompletionMessage {
   role: PromptRole;
@@ -19,6 +26,9 @@ export interface PromptBuilderInput {
   personaDescription?: string;
   worldInfoBefore?: string;
   worldInfoAfter?: string;
+  worldInfoEntries?: WorldInfoScanInputEntry[];
+  worldInfoScanMessages?: Array<string | ChatMessageLine>;
+  worldInfoScanOptions?: WorldInfoScanOptions;
   chatHistory?: string;
   promptOrderCharacterId?: number;
   macroContext?: Omit<
@@ -29,17 +39,23 @@ export interface PromptBuilderInput {
 
 const defaultPromptOrderCharacterId = 100001;
 
+interface PromptBuilderContext {
+  input: PromptBuilderInput;
+  worldInfoScanResult?: WorldInfoScanResult;
+}
+
 export function buildChatCompletionMessages(
   input: PromptBuilderInput,
 ): ChatCompletionMessage[] {
+  const context = createPromptBuilderContext(input);
   const promptMap = new Map(
     input.preset.prompts.map((prompt) => [prompt.identifier, prompt]),
   );
   const orderedPrompts = selectOrderedPrompts(input, promptMap);
 
   return orderedPrompts.flatMap((prompt) => {
-    const content = createPromptContent(prompt, input);
-    const normalizedContent = replacePromptMacros(content, input).trim();
+    const content = createPromptContent(prompt, context);
+    const normalizedContent = replacePromptMacros(content, context.input).trim();
 
     if (normalizedContent.length === 0) {
       return [];
@@ -52,6 +68,29 @@ export function buildChatCompletionMessages(
       },
     ];
   });
+}
+
+function createPromptBuilderContext(
+  input: PromptBuilderInput,
+): PromptBuilderContext {
+  return {
+    input,
+    worldInfoScanResult: createWorldInfoScanResult(input),
+  };
+}
+
+function createWorldInfoScanResult(
+  input: PromptBuilderInput,
+): WorldInfoScanResult | undefined {
+  if (!input.worldInfoEntries || !input.worldInfoScanMessages) {
+    return undefined;
+  }
+
+  return scanWorldInfo(
+    input.worldInfoEntries,
+    input.worldInfoScanMessages,
+    input.worldInfoScanOptions,
+  );
 }
 
 function selectOrderedPrompts(
@@ -87,10 +126,10 @@ function selectPromptOrderSlot(input: PromptBuilderInput) {
 
 function createPromptContent(
   prompt: PresetPrompt,
-  input: PromptBuilderInput,
+  context: PromptBuilderContext,
 ): string {
   if (prompt.marker === true) {
-    return createMarkerContent(prompt.identifier, input);
+    return createMarkerContent(prompt.identifier, context);
   }
 
   return prompt.content ?? "";
@@ -98,8 +137,9 @@ function createPromptContent(
 
 function createMarkerContent(
   identifier: string,
-  input: PromptBuilderInput,
+  context: PromptBuilderContext,
 ): string {
+  const { input } = context;
   const character = input.character.data;
 
   switch (identifier) {
@@ -116,14 +156,26 @@ function createMarkerContent(
     case "personaDescription":
       return input.personaDescription ?? "";
     case "worldInfoBefore":
-      return input.worldInfoBefore ?? "";
+      return input.worldInfoBefore ?? formatScannedWorldInfo(context, "before");
     case "worldInfoAfter":
-      return input.worldInfoAfter ?? "";
+      return input.worldInfoAfter ?? formatScannedWorldInfo(context, "after");
     case "chatHistory":
       return input.chatHistory ?? "";
     default:
       return "";
   }
+}
+
+function formatScannedWorldInfo(
+  context: PromptBuilderContext,
+  bucket: keyof Pick<WorldInfoScanResult, "before" | "after">,
+): string {
+  return (
+    context.worldInfoScanResult?.[bucket]
+      .map((entry) => entry.content)
+      .filter((content) => content.trim().length > 0)
+      .join("\n\n") ?? ""
+  );
 }
 
 function replacePromptMacros(

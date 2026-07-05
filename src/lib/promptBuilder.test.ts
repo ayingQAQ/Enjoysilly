@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
+import type { NativeWorldInfoEntry } from "../types/worldinfo";
 import { importCharacterCardFromBytes } from "./cardIO";
 import { parseChatCompletionPresetJson } from "./presetIO";
 import { buildChatCompletionMessages } from "./promptBuilder";
@@ -63,6 +64,11 @@ function createPreset(): ChatCompletionPreset {
         marker: true,
       },
       {
+        identifier: "worldInfoAfter",
+        role: "system",
+        marker: true,
+      },
+      {
         identifier: "unknownMarker",
         role: "system",
         marker: true,
@@ -78,6 +84,7 @@ function createPreset(): ChatCompletionPreset {
           { identifier: "personaDescription", enabled: true },
           { identifier: "chatHistory", enabled: true },
           { identifier: "worldInfoBefore", enabled: false },
+          { identifier: "worldInfoAfter", enabled: false },
           { identifier: "missingPrompt", enabled: true },
           { identifier: "unknownMarker", enabled: true },
         ],
@@ -180,6 +187,81 @@ describe("prompt builder", () => {
 
     expect(preset).toEqual(originalPreset);
     expect(character).toEqual(originalCharacter);
+  });
+
+  it("injects scanned world info into before and after markers", () => {
+    const preset = createPreset();
+    preset.prompt_order[0].order = [
+      { identifier: "worldInfoBefore", enabled: true },
+      { identifier: "worldInfoAfter", enabled: true },
+    ];
+
+    const worldInfoEntries: NativeWorldInfoEntry[] = [
+      {
+        key: ["library"],
+        content: "Before lore",
+        order: 2,
+        position: 0,
+      },
+      {
+        key: ["library"],
+        content: "After lore",
+        order: 1,
+        position: 1,
+      },
+      {
+        key: ["missing"],
+        content: "Should not appear",
+        order: 0,
+        position: 0,
+      },
+    ];
+
+    const messages = buildChatCompletionMessages({
+      preset,
+      character: createCharacter(),
+      worldInfoEntries,
+      worldInfoScanMessages: ["The library is open."],
+    });
+
+    expect(messages).toEqual([
+      {
+        role: "system",
+        content: "Before lore",
+      },
+      {
+        role: "system",
+        content: "After lore",
+      },
+    ]);
+  });
+
+  it("keeps explicit world info strings ahead of scanned results", () => {
+    const preset = createPreset();
+    preset.prompt_order[0].order = [
+      { identifier: "worldInfoBefore", enabled: true },
+    ];
+
+    const messages = buildChatCompletionMessages({
+      preset,
+      character: createCharacter(),
+      worldInfoBefore: "Manual world info",
+      worldInfoEntries: [
+        {
+          key: ["library"],
+          content: "Scanned world info",
+          position: 0,
+        },
+      ],
+      worldInfoScanMessages: ["library"],
+    });
+
+    expect(messages).toEqual([
+      {
+        role: "system",
+        content: "Manual world info",
+      },
+    ]);
   });
 
   it("builds messages from real preset and character fixtures", () => {
