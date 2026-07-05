@@ -2,7 +2,7 @@ import { AppShell } from "./components/AppShell";
 import { RightPanel } from "./components/RightPanel";
 import { workspaceSections } from "./data/workspace";
 import { CharactersScreen } from "./screens/CharactersScreen";
-import { DashboardScreen } from "./screens/DashboardScreen";
+import { ChatScreen } from "./screens/ChatScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 import { PresetsScreen } from "./screens/PresetsScreen";
 import { RegexScreen } from "./screens/RegexScreen";
@@ -19,7 +19,7 @@ export function App() {
       {activeSection === "worlds" ? <WorldsScreen /> : null}
       {activeSection === "presets" ? <PresetsScreen /> : null}
       {activeSection === "regex" ? <RegexScreen /> : null}
-      {activeSection === "chat" ? <DashboardScreen /> : null}
+      {activeSection === "chat" ? <ChatScreen /> : null}
       {activeSection !== "characters" &&
       activeSection !== "worlds" &&
       activeSection !== "presets" &&
