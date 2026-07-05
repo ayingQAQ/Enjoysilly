@@ -9,7 +9,9 @@ import {
   parseChatCompletionStream,
   parseChatCompletionStreamEvent,
   requestChatCompletion,
+  requestChatCompletionStream,
   type FetchLike,
+  type StreamFetchLike,
 } from "./api";
 import type { ChatCompletionMessage } from "./promptBuilder";
 
@@ -66,6 +68,18 @@ async function collectStreamEvents(
   > = [];
 
   for await (const event of parseChatCompletionStream(stream)) {
+    events.push(event);
+  }
+
+  return events;
+}
+
+async function collectAsyncEvents<T>(
+  generator: AsyncGenerator<T>,
+): Promise<T[]> {
+  const events: T[] = [];
+
+  for await (const event of generator) {
     events.push(event);
   }
 
@@ -376,5 +390,126 @@ describe("OpenAI-compatible API client", () => {
     expect(() => parseChatCompletionStreamEvent("data: {broken")).toThrow(
       OpenAICompatibleApiError,
     );
+  });
+
+  it("requests streaming chat completion and yields stream events", async () => {
+    const calls: Array<{ input: string; init: RequestInit }> = [];
+    const fetchImpl: StreamFetchLike = async (input, init) => {
+      calls.push({ input, init });
+
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => undefined,
+        body: createStream([
+          'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      };
+    };
+
+    const body = createChatCompletionRequestBody({
+      model: "test-model",
+      messages: [
+        {
+          role: "user",
+          content: "Hello",
+        },
+      ],
+      stream: false,
+    });
+    const events = await collectAsyncEvents(
+      requestChatCompletionStream({
+        baseUrl: "https://example.test/v1",
+        apiKey: "secret",
+        body,
+        fetchImpl,
+      }),
+    );
+
+    expect(events).toEqual([
+      {
+        content: "Hi",
+        raw: {
+          choices: [
+            {
+              delta: {
+                content: "Hi",
+              },
+            },
+          ],
+        },
+      },
+      {
+        content: "",
+        done: true,
+        raw: "[DONE]",
+      },
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].input).toBe("https://example.test/v1/chat/completions");
+    expect(calls[0].init.headers).toEqual({
+      "Content-Type": "application/json",
+      Authorization: "Bearer secret",
+    });
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      ...body,
+      stream: true,
+    });
+  });
+
+  it("throws typed error for streaming HTTP error responses", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      json: async () => ({
+        error: {
+          message: "Rate limited",
+        },
+      }),
+      body: null,
+    });
+
+    await expect(
+      collectAsyncEvents(
+        requestChatCompletionStream({
+          baseUrl: "https://example.test/v1",
+          body: createChatCompletionRequestBody({
+            model: "test-model",
+            messages: [],
+          }),
+          fetchImpl,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      name: "OpenAICompatibleApiError",
+      status: 429,
+      message: "Chat completion request failed (429): Rate limited",
+    });
+  });
+
+  it("throws typed error when streaming response body is missing", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => undefined,
+      body: null,
+    });
+
+    await expect(
+      collectAsyncEvents(
+        requestChatCompletionStream({
+          baseUrl: "https://example.test/v1",
+          body: createChatCompletionRequestBody({
+            model: "test-model",
+            messages: [],
+          }),
+          fetchImpl,
+        }),
+      ),
+    ).rejects.toThrow("stream response does not contain a body");
   });
 });

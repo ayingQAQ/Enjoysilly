@@ -45,10 +45,26 @@ export interface RequestChatCompletionInput {
   signal?: AbortSignal;
 }
 
+export interface RequestChatCompletionStreamInput {
+  baseUrl: string;
+  apiKey?: string;
+  body: OpenAICompatibleChatCompletionRequestBody;
+  fetchImpl?: StreamFetchLike;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
 export type FetchLike = (
   input: string,
   init: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "statusText" | "json">>;
+
+export type StreamFetchLike = (
+  input: string,
+  init: RequestInit,
+) => Promise<
+  Pick<Response, "ok" | "status" | "statusText" | "json" | "body">
+>;
 
 export class OpenAICompatibleApiError extends Error {
   status?: number;
@@ -120,6 +136,39 @@ export async function requestChatCompletion(
   }
 
   return parseChatCompletionResponse(responseBody);
+}
+
+export async function* requestChatCompletionStream(
+  input: RequestChatCompletionStreamInput,
+): AsyncGenerator<ChatCompletionStreamEvent> {
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch;
+
+  if (!fetchImpl) {
+    throw new OpenAICompatibleApiError("Fetch API is not available.");
+  }
+
+  const response = await fetchImpl(createChatCompletionsUrl(input.baseUrl), {
+    method: "POST",
+    headers: createRequestHeaders(input),
+    body: JSON.stringify({
+      ...input.body,
+      stream: true,
+    }),
+    signal: input.signal,
+  });
+
+  if (!response.ok) {
+    const responseBody = await readJsonResponse(response);
+    throw createApiErrorFromResponse(response, responseBody);
+  }
+
+  if (!response.body) {
+    throw new OpenAICompatibleApiError(
+      "Chat completion stream response does not contain a body.",
+    );
+  }
+
+  yield* parseChatCompletionStream(response.body);
 }
 
 export function parseChatCompletionResponse(
@@ -274,7 +323,7 @@ export function parseChatCompletionStreamEvent(
 }
 
 function createRequestHeaders(
-  input: RequestChatCompletionInput,
+  input: Pick<RequestChatCompletionInput, "apiKey" | "headers">,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
