@@ -4,7 +4,11 @@ import type { ChatMessageLine } from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
 import type { StreamFetchLike } from "./api";
-import { runStreamingChatTurn } from "./chatStreaming";
+import {
+  runStreamingChatContinue,
+  runStreamingChatReroll,
+  runStreamingChatTurn,
+} from "./chatStreaming";
 
 function createCharacter(): CharacterCard {
   return {
@@ -84,6 +88,30 @@ async function collectStreamingTurn(
   const updates = [];
 
   for await (const update of runStreamingChatTurn(input)) {
+    updates.push(update);
+  }
+
+  return updates;
+}
+
+async function collectStreamingReroll(
+  input: Parameters<typeof runStreamingChatReroll>[0],
+) {
+  const updates = [];
+
+  for await (const update of runStreamingChatReroll(input)) {
+    updates.push(update);
+  }
+
+  return updates;
+}
+
+async function collectStreamingContinue(
+  input: Parameters<typeof runStreamingChatContinue>[0],
+) {
+  const updates = [];
+
+  for await (const update of runStreamingChatContinue(input)) {
     updates.push(update);
   }
 
@@ -290,6 +318,229 @@ describe("streaming chat turn runner", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0]).toMatchObject({
       kind: "started",
+    });
+  });
+
+  it("rerolls an assistant message by appending a new swipe", async () => {
+    const calls: Array<{ input: string; init: RequestInit }> = [];
+    const fetchImpl: StreamFetchLike = async (input, init) => {
+      calls.push({ input, init });
+
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => undefined,
+        body: createStream([
+          'data: {"choices":[{"delta":{"content":"New"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":" answer"}}]}\n\n',
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      };
+    };
+    const messages: ChatMessageLine[] = [
+      createMessage({
+        name: "Tester",
+        is_user: true,
+        mes: "Question?",
+        swipes: ["Question?"],
+      }),
+      createMessage({
+        name: "Alice",
+        is_user: false,
+        mes: "Old answer.",
+        swipe_id: 0,
+        swipes: ["Old answer."],
+        extra: {
+          keep: true,
+        },
+      }),
+    ];
+    const originalMessages = structuredClone(messages);
+
+    const updates = await collectStreamingReroll({
+      assistantMessageIndex: 1,
+      baseUrl: "https://example.test/v1",
+      apiKey: "secret",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages,
+      userName: "Tester",
+      fetchImpl,
+    });
+
+    expect(updates.map((update) => update.kind)).toEqual([
+      "started",
+      "delta",
+      "delta",
+      "finished",
+    ]);
+    expect(updates[0]).toMatchObject({
+      kind: "started",
+      assistantMessageIndex: 1,
+      messages: [
+        messages[0],
+        {
+          name: "Alice",
+          mes: "",
+          swipe_id: 1,
+          swipes: ["Old answer.", ""],
+          extra: {
+            keep: true,
+          },
+        },
+      ],
+    });
+    expect(updates.at(-1)).toMatchObject({
+      kind: "finished",
+      content: "New answer",
+      finishReason: "stop",
+      messages: [
+        messages[0],
+        {
+          name: "Alice",
+          mes: "New answer",
+          swipe_id: 1,
+          swipes: ["Old answer.", "New answer"],
+          extra: {
+            keep: true,
+            finish_reason: "stop",
+          },
+        },
+      ],
+    });
+    expect(messages).toEqual(originalMessages);
+    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({
+      messages: [
+        {
+          role: "system",
+          content: "You are Alice talking to Tester.",
+        },
+        {
+          role: "user",
+          content: "Tester: Question?",
+        },
+      ],
+    });
+    expect(String(calls[0].init.body)).not.toContain("Old answer.");
+  });
+
+  it("rejects reroll targets that are not assistant messages", async () => {
+    await expect(async () => {
+      for await (const _update of runStreamingChatReroll({
+        assistantMessageIndex: 0,
+        baseUrl: "https://example.test/v1",
+        model: "test-model",
+        preset: createPreset(),
+        character: createCharacter(),
+        messages: [
+          createMessage({
+            name: "Tester",
+            is_user: true,
+          }),
+        ],
+        userName: "Tester",
+        fetchImpl: async () => ({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => undefined,
+          body: createStream(["data: [DONE]\n\n"]),
+        }),
+      })) {
+        // Exhaust the generator.
+      }
+    }).rejects.toThrow("Message at index 0 is not an assistant message.");
+  });
+
+  it("continues an assistant message by appending to the selected swipe", async () => {
+    const calls: Array<{ input: string; init: RequestInit }> = [];
+    const fetchImpl: StreamFetchLike = async (input, init) => {
+      calls.push({ input, init });
+
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => undefined,
+        body: createStream([
+          'data: {"choices":[{"delta":{"content":" plus"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":" more"}}]}\n\n',
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      };
+    };
+    const messages: ChatMessageLine[] = [
+      createMessage({
+        name: "Tester",
+        is_user: true,
+        mes: "Question?",
+        swipes: ["Question?"],
+      }),
+      createMessage({
+        name: "Alice",
+        is_user: false,
+        mes: "Base answer",
+        swipe_id: 0,
+        swipes: ["Base answer"],
+        extra: {
+          keep: true,
+        },
+      }),
+    ];
+    const originalMessages = structuredClone(messages);
+
+    const updates = await collectStreamingContinue({
+      assistantMessageIndex: 1,
+      baseUrl: "https://example.test/v1",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages,
+      userName: "Tester",
+      fetchImpl,
+    });
+
+    expect(updates.map((update) => update.kind)).toEqual([
+      "started",
+      "delta",
+      "delta",
+      "finished",
+    ]);
+    expect(updates.at(-1)).toMatchObject({
+      kind: "finished",
+      baseContent: "Base answer",
+      continuation: " plus more",
+      finishReason: "stop",
+      messages: [
+        messages[0],
+        {
+          name: "Alice",
+          mes: "Base answer plus more",
+          swipe_id: 0,
+          swipes: ["Base answer plus more"],
+          extra: {
+            keep: true,
+            finish_reason: "stop",
+          },
+        },
+      ],
+    });
+    expect(messages).toEqual(originalMessages);
+    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({
+      messages: [
+        {
+          role: "system",
+          content: "You are Alice talking to Tester.",
+        },
+        {
+          role: "user",
+          content: "Tester: Question?\nAlice: Base answer",
+        },
+      ],
     });
   });
 });

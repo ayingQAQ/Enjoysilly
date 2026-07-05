@@ -1,8 +1,10 @@
 import {
+  deleteChat,
   getChat,
   getMySillyDatabase,
   listChats,
   listChatsByCharacterId,
+  saveChat,
   type MySillyDatabaseConnection,
   type StoredChat,
 } from "../lib/db";
@@ -33,6 +35,13 @@ export interface LoadChatArchiveSummariesOptions {
 export interface ChatArchiveDetail {
   summary: ChatArchiveSummary;
   stored: StoredChat;
+}
+
+export interface RenameChatArchiveInput {
+  chatId: string;
+  name: string;
+  now?: Date;
+  database?: MySillyDatabaseConnection;
 }
 
 export async function loadChatArchiveSummaries(
@@ -67,6 +76,48 @@ export async function loadChatArchiveDetail(
   };
 }
 
+export async function renameChatArchive(
+  input: RenameChatArchiveInput,
+): Promise<ChatArchiveDetail> {
+  const nextName = normalizeArchiveName(input.name);
+  const database = input.database ?? (await getMySillyDatabase());
+  const stored = await getChat(input.chatId, database);
+
+  if (!stored) {
+    throw new Error(`找不到对话存档：${input.chatId}`);
+  }
+
+  const renamed: StoredChat = {
+    ...cloneStoredChat(stored),
+    name: nextName,
+    updatedAt: (input.now ?? new Date()).toISOString(),
+  };
+
+  await saveChat(renamed, database);
+
+  return {
+    summary: createChatArchiveSummary(renamed),
+    stored: cloneStoredChat(renamed),
+  };
+}
+
+export async function deleteChatArchive(
+  chatId: string,
+  database?: MySillyDatabaseConnection,
+): Promise<ChatArchiveSummary> {
+  const db = database ?? (await getMySillyDatabase());
+  const stored = await getChat(chatId, db);
+
+  if (!stored) {
+    throw new Error(`找不到对话存档：${chatId}`);
+  }
+
+  const summary = createChatArchiveSummary(stored);
+  await deleteChat(chatId, db);
+
+  return summary;
+}
+
 export function createChatArchiveSummary(
   stored: StoredChat,
 ): ChatArchiveSummary {
@@ -94,6 +145,16 @@ export function createChatArchiveSummary(
 
 function cloneStoredChat(stored: StoredChat): StoredChat {
   return structuredClone(stored) as StoredChat;
+}
+
+function normalizeArchiveName(name: string): string {
+  const normalized = name.trim();
+
+  if (!normalized) {
+    throw new Error("对话存档名称不能为空");
+  }
+
+  return normalized;
 }
 
 function hasDisplayText(message: ChatMessageLine): boolean {
