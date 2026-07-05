@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -19,6 +20,7 @@ import {
   Save,
   Send,
   Square,
+  Upload,
   UserRound,
 } from "lucide-react";
 
@@ -44,12 +46,20 @@ import {
   type SaveChatSnapshotToDatabaseInput,
 } from "../services/chatPersistence";
 import {
+  importChatToDatabase,
+  type ImportChatToDatabaseOptions,
+} from "../services/chatImport";
+import {
   loadChatArchiveDetail,
   loadChatArchiveSummaries,
   type ChatArchiveSummary,
 } from "../services/chatArchive";
 import { createChatJsonlExport } from "../services/chatExport";
-import type { ChatMessageLine } from "../types/chat";
+import type {
+  ChatMessageLine,
+  ChatMetadataLine,
+  SillyTavernChatLog,
+} from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
 
@@ -79,6 +89,7 @@ export function ChatScreen() {
   );
   const [isStreaming, setIsStreaming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isImportingChat, setIsImportingChat] = useState(false);
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -92,6 +103,8 @@ export function ChatScreen() {
   const [chatArchives, setChatArchives] = useState<ChatArchiveSummary[]>([]);
   const [loadedArchiveId, setLoadedArchiveId] = useState<string | null>(null);
   const [loadedArchiveName, setLoadedArchiveName] = useState<string | null>(null);
+  const [loadedChatMetadata, setLoadedChatMetadata] =
+    useState<ChatMetadataLine | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState(
     localCharacterOptionId,
   );
@@ -105,6 +118,7 @@ export function ChatScreen() {
   );
   const [presetDetailError, setPresetDetailError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const chatImportInputRef = useRef<HTMLInputElement>(null);
 
   const fallbackPreset = useMemo(() => createMinimalChatPreset(), []);
   const localCharacter = useMemo(
@@ -132,11 +146,14 @@ export function ChatScreen() {
     selectedPresetId === minimalPresetOptionId || selectedPresetDetail !== null;
   const canSend =
     !isStreaming &&
+    !isImportingChat &&
     inputText.trim().length > 0 &&
     isCharacterReady &&
     isPresetReady;
-  const canSave = !isStreaming && !isSaving && messages.length > 0;
-  const canExport = !isStreaming && messages.length > 0;
+  const canImport = !isStreaming && !isImportingChat;
+  const canSave =
+    !isStreaming && !isSaving && !isImportingChat && messages.length > 0;
+  const canExport = !isStreaming && !isImportingChat && messages.length > 0;
 
   const refreshChatArchives = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -286,6 +303,7 @@ export function ChatScreen() {
       setStatusText("正在请求模型");
       setError(null);
       setSaveMessage(null);
+      setLoadedChatMetadata(null);
       setInputText("");
 
       try {
@@ -350,6 +368,76 @@ export function ChatScreen() {
     abortControllerRef.current?.abort();
   }, []);
 
+  const handlePickChatImportFile = useCallback(() => {
+    if (!canImport) {
+      return;
+    }
+
+    chatImportInputRef.current?.click();
+  }, [canImport]);
+
+  const handleChatImportFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+
+      if (!file || !canImport) {
+        return;
+      }
+
+      if (
+        messages.length > 0 &&
+        !window.confirm(
+          "导入 JSONL 会替换当前页面消息。已保存的本地存档不会被删除，是否继续？",
+        )
+      ) {
+        return;
+      }
+
+      setIsImportingChat(true);
+      setError(null);
+      setSaveMessage(null);
+      setArchiveError(null);
+      setStatusText("正在导入 JSONL");
+
+      try {
+        const imported = await importChatToDatabase(
+          new Uint8Array(await file.arrayBuffer()),
+          file.name,
+          createChatImportDatabaseOptions(selectedCharacterId),
+        );
+        const importedState = createImportedChatScreenState({
+          chat: imported.chat,
+          selectedCharacterId,
+          storedId: imported.stored.id,
+          storedName: imported.stored.name,
+        });
+
+        setMessages(importedState.messages);
+        setUserName(importedState.userName);
+
+        if (importedState.characterName) {
+          setCharacterName(importedState.characterName);
+        }
+
+        setLoadedArchiveId(importedState.loadedArchiveId);
+        setLoadedArchiveName(importedState.loadedArchiveName);
+        setLoadedChatMetadata(importedState.metadata);
+        setSaveMessage(
+          `已导入并保存：${imported.stored.name}（${imported.chat.messages.length} 行消息）`,
+        );
+        setStatusText("JSONL 已导入到当前页面和本地数据库");
+        await refreshChatArchives({ silent: true });
+      } catch (importError: unknown) {
+        setError(formatChatImportError(importError));
+        setStatusText("导入失败");
+      } finally {
+        setIsImportingChat(false);
+      }
+    },
+    [canImport, messages.length, refreshChatArchives, selectedCharacterId],
+  );
+
   const handleSave = useCallback(async () => {
     if (!canSave) {
       return;
@@ -363,6 +451,7 @@ export function ChatScreen() {
       const stored = await saveChatSnapshotToDatabase(
         createChatSaveSnapshotInput({
           activeCharacter,
+          chatMetadata: loadedChatMetadata ?? undefined,
           messages,
           selectedCharacterId,
           userName,
@@ -383,6 +472,7 @@ export function ChatScreen() {
   }, [
     activeCharacter,
     canSave,
+    loadedChatMetadata,
     messages,
     refreshChatArchives,
     selectedCharacterId,
@@ -406,6 +496,7 @@ export function ChatScreen() {
           defaultCharacterName,
         ),
         chatName: loadedArchiveName ?? undefined,
+        metadata: loadedChatMetadata ?? undefined,
       });
 
       downloadBytesToFile(
@@ -419,7 +510,14 @@ export function ChatScreen() {
       setError(formatChatExportError(exportError));
       setStatusText("导出失败");
     }
-  }, [activeCharacter, canExport, loadedArchiveName, messages, userName]);
+  }, [
+    activeCharacter,
+    canExport,
+    loadedArchiveName,
+    loadedChatMetadata,
+    messages,
+    userName,
+  ]);
 
   const handleLoadArchive = useCallback(
     async (archiveId: string) => {
@@ -437,6 +535,7 @@ export function ChatScreen() {
         const metadata = detail.stored.payload.metadata;
 
         setMessages(detail.stored.payload.messages);
+        setLoadedChatMetadata(cloneChatMetadata(metadata));
         setUserName(normalizeName(metadata.user_name, defaultUserName));
 
         if (selectedCharacterId === localCharacterOptionId) {
@@ -468,6 +567,7 @@ export function ChatScreen() {
     setSaveMessage(null);
     setLoadedArchiveId(null);
     setLoadedArchiveName(null);
+    setLoadedChatMetadata(null);
     setStatusText("等待输入");
   }, [isStreaming]);
 
@@ -484,7 +584,7 @@ export function ChatScreen() {
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
               当前页面可以选择已导入角色和 ST 原生预设用于发送；对话默认只保存在当前页面状态，
-              也可以手动保存为 ST JSONL 兼容快照，不修改角色卡、世界书、预设或正则脚本 payload。
+              也可以导入/导出 ST JSONL，并手动保存为兼容快照，不修改角色卡、世界书、预设或正则脚本 payload。
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
@@ -515,6 +615,26 @@ export function ChatScreen() {
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
+              <input
+                ref={chatImportInputRef}
+                className="hidden"
+                type="file"
+                accept=".jsonl,.json,application/json,application/x-ndjson,text/plain"
+                onChange={(event) => void handleChatImportFileChange(event)}
+              />
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canImport}
+                type="button"
+                onClick={handlePickChatImportFile}
+              >
+                {isImportingChat ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  <Upload size={14} />
+                )}
+                导入
+              </button>
               <button
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canExport}
@@ -728,7 +848,8 @@ export function ChatScreen() {
 
           <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
             选中的预设仅按 ST 原生 Chat Completion 结构参与 prompt 组装；不会执行
-            TavernHelper、JS-Slash-Runner 或正则脚本。
+            TavernHelper、JS-Slash-Runner 或正则脚本。导入 JSONL 会保存到本地
+            chats store，并替换当前页面消息。
           </div>
         </aside>
       </div>
@@ -827,11 +948,12 @@ export function getChatArchiveFilterCharacterId(
 
 export function createChatSaveSnapshotInput(input: {
   activeCharacter: CharacterCard;
+  chatMetadata?: ChatMetadataLine;
   messages: ChatMessageLine[];
   selectedCharacterId: string;
   userName: string;
 }): SaveChatSnapshotToDatabaseInput {
-  return {
+  const snapshotInput: SaveChatSnapshotToDatabaseInput = {
     messages: input.messages,
     userName: normalizeName(input.userName, defaultUserName),
     characterName: normalizeName(
@@ -842,6 +964,52 @@ export function createChatSaveSnapshotInput(input: {
       input.selectedCharacterId === localCharacterOptionId
         ? undefined
         : input.selectedCharacterId,
+  };
+
+  if (input.chatMetadata) {
+    snapshotInput.metadata = cloneChatMetadata(input.chatMetadata);
+  }
+
+  return snapshotInput;
+}
+
+export function createChatImportDatabaseOptions(
+  selectedCharacterId: string,
+): Pick<ImportChatToDatabaseOptions, "characterId"> {
+  return {
+    characterId:
+      selectedCharacterId === localCharacterOptionId
+        ? undefined
+        : selectedCharacterId,
+  };
+}
+
+export function createImportedChatScreenState(input: {
+  chat: SillyTavernChatLog;
+  selectedCharacterId: string;
+  storedId: string;
+  storedName: string;
+}): {
+  messages: ChatMessageLine[];
+  userName: string;
+  characterName?: string;
+  metadata: ChatMetadataLine;
+  loadedArchiveId: string;
+  loadedArchiveName: string;
+} {
+  const metadata = input.chat.metadata;
+  const shouldSyncCharacterName =
+    input.selectedCharacterId === localCharacterOptionId;
+
+  return {
+    messages: cloneChatMessages(input.chat.messages),
+    userName: normalizeName(metadata.user_name, defaultUserName),
+    characterName: shouldSyncCharacterName
+      ? normalizeName(metadata.character_name, defaultCharacterName)
+      : undefined,
+    metadata: cloneChatMetadata(metadata),
+    loadedArchiveId: input.storedId,
+    loadedArchiveName: input.storedName,
   };
 }
 
@@ -1166,10 +1334,26 @@ function formatChatExportError(error: unknown): string {
   return `${String(error)}。导出对话失败。`;
 }
 
+function formatChatImportError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.message}。导入对话失败，请确认文件是 SillyTavern JSONL 格式。`;
+  }
+
+  return `${String(error)}。导入对话失败。`;
+}
+
 function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+function cloneChatMessages(messages: ChatMessageLine[]): ChatMessageLine[] {
+  return structuredClone(messages) as ChatMessageLine[];
+}
+
+function cloneChatMetadata(metadata: ChatMetadataLine): ChatMetadataLine {
+  return structuredClone(metadata) as ChatMetadataLine;
 }

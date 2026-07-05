@@ -18,6 +18,7 @@ export interface CreateChatLogSnapshotInput {
   userName: string;
   characterName: string;
   now?: Date;
+  metadata?: ChatMetadataLine;
   chatMetadata?: UnknownRecord;
 }
 
@@ -86,17 +87,26 @@ export function createChatSnapshotName(metadata: ChatMetadataLine): string {
 function createChatMetadata(
   input: CreateChatLogSnapshotInput,
 ): ChatMetadataLine {
-  const metadata: ChatMetadataLine = {
-    user_name: input.userName,
-    character_name: input.characterName,
-    create_date: formatSillyTavernChatDate(input.now),
-  };
+  const metadata: ChatMetadataLine = input.metadata
+    ? cloneChatMetadata(input.metadata)
+    : {};
+
+  metadata.user_name = input.userName;
+  metadata.character_name = input.characterName;
+
+  if (!metadata.create_date) {
+    metadata.create_date = formatSillyTavernChatDate(input.now);
+  }
 
   if (input.chatMetadata) {
     metadata.chat_metadata = cloneUnknownRecord(input.chatMetadata);
   }
 
   return metadata;
+}
+
+function cloneChatMetadata(value: ChatMetadataLine): ChatMetadataLine {
+  return structuredClone(value) as ChatMetadataLine;
 }
 
 function cloneChatMessage(message: ChatMessageLine): ChatMessageLine {

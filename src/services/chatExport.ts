@@ -1,6 +1,10 @@
 import { encodeSillyTavernChatJsonl } from "../lib/chatIO";
 import { formatSillyTavernChatDate } from "../lib/chatTurn";
-import type { ChatMessageLine, SillyTavernChatLog } from "../types/chat";
+import type {
+  ChatMessageLine,
+  ChatMetadataLine,
+  SillyTavernChatLog,
+} from "../types/chat";
 import { createChatLogSnapshot } from "./chatPersistence";
 import { createSafeFileName } from "./exportFileName";
 
@@ -9,6 +13,7 @@ export interface CreateChatExportInput {
   userName: string;
   characterName: string;
   chatName?: string;
+  metadata?: ChatMetadataLine;
   now?: Date;
 }
 
@@ -26,6 +31,7 @@ export function createChatJsonlExport(
     messages: input.messages,
     userName: input.userName,
     characterName: input.characterName,
+    metadata: input.metadata,
     now,
   });
 
