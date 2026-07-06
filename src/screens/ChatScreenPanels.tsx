@@ -157,15 +157,14 @@ export function ChatBubble({
 
 export function EmptyChatState() {
   return (
-    <div className="grid min-h-[360px] place-items-center rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-6 text-center">
+    <div className="grid min-h-[180px] place-items-center rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-5 text-center">
       <div>
-        <div className="mx-auto mb-4 grid size-12 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
-          <MessageSquare size={22} />
+        <div className="mx-auto mb-3 grid size-10 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
+          <MessageSquare size={19} />
         </div>
         <h2 className="text-base font-semibold">还没有消息</h2>
         <p className="mt-2 max-w-md text-sm leading-7 text-[var(--text-secondary)]">
-          选择角色与预设后发送第一条消息。页面会显示真实流式响应；如果浏览器被
-          CORS 拦截，请换用允许 Web 调用的兼容端点。
+          选择角色后会自动载入首条问候；也可以直接输入消息开始对话。
         </p>
       </div>
     </div>

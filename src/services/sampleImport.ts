@@ -73,6 +73,7 @@ export async function importBundledSamplesToDatabase(
     bundledSampleFiles.character.fileName,
     {
       database,
+      embeddedWorldInfoId: bundledSampleIds.world,
       id: bundledSampleIds.character,
       now: options.now,
     },

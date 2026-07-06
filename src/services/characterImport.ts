@@ -6,8 +6,10 @@ import {
 import {
   getMySillyDatabase,
   saveCharacter,
+  saveWorldInfo,
   type MySillyDatabaseConnection,
   type StoredCharacter,
+  type StoredWorldInfo,
 } from "../lib/db";
 import {
   createStoredEntity,
@@ -18,16 +20,19 @@ import {
   type ImportResult,
   unknownFieldsPreservedWarning,
 } from "./importResult";
+import { createStoredWorldInfo } from "./worldInfoImport";
 
 export type StoredCharacterOptions = StoredEntityOptions;
 
 export interface ImportCharacterToDatabaseOptions extends StoredCharacterOptions {
   database?: MySillyDatabaseConnection;
+  embeddedWorldInfoId?: string;
 }
 
 export interface ImportedStoredCharacter {
   imported: ImportedCharacterCard;
   stored: StoredCharacter;
+  embeddedWorldInfo?: StoredWorldInfo;
   result: ImportResult<StoredCharacter, CharacterCard>;
 }
 
@@ -53,8 +58,23 @@ export async function importCharacterToDatabase(
   }
 
   await saveCharacter(stored, database);
+  const embeddedWorldInfo = imported.card.data.character_book
+    ? createStoredWorldInfo(
+        imported.card.data.character_book,
+        `${imported.card.data.name} · 内嵌世界书`,
+        {
+          id: options.embeddedWorldInfoId ?? `${stored.id}__character_book`,
+          now: options.now,
+        },
+      )
+    : undefined;
+
+  if (embeddedWorldInfo) {
+    await saveWorldInfo(embeddedWorldInfo, database);
+  }
 
   return {
+    embeddedWorldInfo,
     imported,
     stored,
     result: createImportResult("character", fileName, stored, imported.card, [

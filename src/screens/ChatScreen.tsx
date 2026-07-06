@@ -104,6 +104,7 @@ import {
   minimalPresetOptionId,
   normalizeName,
   appendQuickReplyToInput,
+  extractWorldInfoEntries,
   resolveDefaultWorldInfoEntries,
   selectChatCharacterPayload,
   selectChatMessageSwipeAt,
@@ -167,6 +168,7 @@ export function ChatScreen() {
   );
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
+  const lastAutoGreetingCharacterIdRef = useRef<string | null>(null);
 
   const fallbackPreset = useMemo(() => createMinimalChatPreset(), []);
   const localCharacter = useMemo(
@@ -189,6 +191,19 @@ export function ChatScreen() {
     () => createCharacterGreetingOptions(activeCharacter),
     [activeCharacter],
   );
+  const embeddedWorldInfoEntries = useMemo(() => {
+    const embeddedBook =
+      selectedCharacterDetail?.stored.payload.data.character_book;
+
+    if (!embeddedBook) {
+      return undefined;
+    }
+
+    const entries = extractWorldInfoEntries(embeddedBook);
+
+    return entries.length > 0 ? entries : undefined;
+  }, [selectedCharacterDetail]);
+  const activeWorldInfoEntries = embeddedWorldInfoEntries ?? worldInfoEntries;
   const archiveFilterCharacterId =
     getChatArchiveFilterCharacterId(selectedCharacterId);
   const isCharacterReady =
@@ -285,6 +300,26 @@ export function ChatScreen() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      isAssetLoading ||
+      selectedCharacterId !== localCharacterOptionId ||
+      characters.length === 0 ||
+      messages.length > 0 ||
+      loadedArchiveId
+    ) {
+      return;
+    }
+
+    setSelectedCharacterId(characters[0]?.id ?? localCharacterOptionId);
+  }, [
+    characters,
+    isAssetLoading,
+    loadedArchiveId,
+    messages.length,
+    selectedCharacterId,
+  ]);
 
   useEffect(() => {
     void refreshChatArchives();
@@ -386,6 +421,119 @@ export function ChatScreen() {
     };
   }, [selectedPresetId]);
 
+  useEffect(() => {
+    if (
+      selectedCharacterId === localCharacterOptionId ||
+      !selectedCharacterDetail ||
+      messages.length > 0 ||
+      loadedArchiveId ||
+      isStreaming ||
+      isImportingChat ||
+      lastAutoGreetingCharacterIdRef.current === selectedCharacterId
+    ) {
+      return;
+    }
+
+    const greetingMessage = createGreetingChatMessage({
+      character: selectedCharacterDetail.stored.payload,
+      userName: normalizeName(userName, defaultUserName),
+    });
+
+    lastAutoGreetingCharacterIdRef.current = selectedCharacterId;
+
+    if (!greetingMessage) {
+      return;
+    }
+
+    setMessages([greetingMessage]);
+    setLoadedArchiveId(null);
+    setLoadedArchiveName(null);
+    setLoadedChatMetadata(null);
+    setHasUnsavedChanges(true);
+    setStatusText("已载入角色首条问候");
+  }, [
+    isImportingChat,
+    isStreaming,
+    loadedArchiveId,
+    messages.length,
+    selectedCharacterDetail,
+    selectedCharacterId,
+    userName,
+  ]);
+
+  const autoSaveChat = useCallback(async () => {
+    if (messages.length === 0 || isStreaming || isImportingChat || isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const stored = await saveChatSnapshotToDatabase({
+        ...createChatSaveSnapshotInput({
+          activeCharacter,
+          chatMetadata: loadedChatMetadata ?? undefined,
+          messages,
+          selectedCharacterId,
+          userName,
+        }),
+        id: loadedArchiveId ?? undefined,
+        name: loadedArchiveName ?? undefined,
+      });
+
+      setLoadedArchiveId(stored.id);
+      setLoadedArchiveName(stored.name);
+      setHasUnsavedChanges(false);
+      setSaveMessage(`已自动保存：${stored.name}`);
+      setStatusText("对话已自动保存到本地数据库");
+      await refreshChatArchives({ silent: true });
+    } catch (saveError: unknown) {
+      setError(formatChatSaveError(saveError));
+      setHasUnsavedChanges(false);
+      setStatusText("自动保存失败");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    activeCharacter,
+    isImportingChat,
+    isSaving,
+    isStreaming,
+    loadedArchiveId,
+    loadedArchiveName,
+    loadedChatMetadata,
+    messages,
+    refreshChatArchives,
+    selectedCharacterId,
+    userName,
+  ]);
+
+  useEffect(() => {
+    if (
+      !hasUnsavedChanges ||
+      messages.length === 0 ||
+      isStreaming ||
+      isImportingChat ||
+      isSaving
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void autoSaveChat();
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [
+    autoSaveChat,
+    hasUnsavedChanges,
+    isImportingChat,
+    isSaving,
+    isStreaming,
+    messages.length,
+  ]);
+
   const handleSend = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -433,7 +581,7 @@ export function ChatScreen() {
           userName: normalizeName(userName, defaultUserName),
           userText,
           personaDescription,
-          worldInfoEntries,
+          worldInfoEntries: activeWorldInfoEntries,
           signal: controller.signal,
           regexScripts: activeRegexScripts,
         })) {
@@ -470,6 +618,7 @@ export function ChatScreen() {
     [
       activeCharacter,
       activePreset,
+      activeWorldInfoEntries,
       apiKey,
       baseUrl,
       inputText,
@@ -700,6 +849,7 @@ export function ChatScreen() {
     setLoadedArchiveName(null);
     setLoadedChatMetadata(null);
     setHasUnsavedChanges(false);
+    lastAutoGreetingCharacterIdRef.current = null;
     setStatusText("等待输入");
   }, [isImportingChat, isStreaming, messages.length]);
 
@@ -866,7 +1016,7 @@ export function ChatScreen() {
           messages,
           userName: normalizeName(userName, defaultUserName),
           personaDescription,
-          worldInfoEntries,
+          worldInfoEntries: activeWorldInfoEntries,
           signal: controller.signal,
           regexScripts: activeRegexScripts,
         })) {
@@ -903,6 +1053,7 @@ export function ChatScreen() {
     [
       activeCharacter,
       activePreset,
+      activeWorldInfoEntries,
       apiKey,
       baseUrl,
       isCharacterReady,
@@ -952,7 +1103,7 @@ export function ChatScreen() {
         messages,
         userName: normalizeName(userName, defaultUserName),
         personaDescription,
-        worldInfoEntries,
+        worldInfoEntries: activeWorldInfoEntries,
         signal: controller.signal,
         regexScripts: activeRegexScripts,
       })) {
@@ -988,6 +1139,7 @@ export function ChatScreen() {
   }, [
     activeCharacter,
     activePreset,
+    activeWorldInfoEntries,
     apiKey,
     baseUrl,
     canContinue,
@@ -1116,7 +1268,7 @@ export function ChatScreen() {
         </div>
       </div>
 
-      <div className="grid min-h-[640px] gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-h-[520px] gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-h-0 flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm">
           <div className="flex flex-col gap-3 border-b border-[var(--border-soft)] px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -1135,11 +1287,13 @@ export function ChatScreen() {
                     已加载：{loadedArchiveName}
                   </p>
                 ) : null}
-                {hasUnsavedChanges && messages.length > 0 ? (
-                  <p className="truncate text-xs text-amber-600">
-                    有未保存更改，点击保存写入本地存档
-                  </p>
-                ) : null}
+                <p className="truncate text-xs text-[var(--text-muted)]">
+                  {messages.length > 0
+                    ? hasUnsavedChanges
+                      ? "正在等待自动保存"
+                      : "已自动保存到本地"
+                    : "新对话会在出现消息后自动保存"}
+                </p>
               </div>
             </div>
             <div className="flex min-w-0 flex-wrap gap-2">
@@ -1206,7 +1360,7 @@ export function ChatScreen() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             {messages.length === 0 ? (
               <EmptyChatState />
             ) : (
@@ -1356,12 +1510,18 @@ export function ChatScreen() {
             isAssetLoading={isAssetLoading}
             presetDetail={selectedPresetDetail}
           />
+          {embeddedWorldInfoEntries ? (
+            <NoticeText
+              kind="muted"
+              text={`已启用角色卡内嵌世界书：${embeddedWorldInfoEntries.length} 条。`}
+            />
+          ) : null}
 
           <div className="border-t border-[var(--border-soft)] pt-4">
             <PanelTitle
               icon={<Archive size={17} />}
               title="本地存档"
-              subtitle="管理 chats store 中的本地对话；不自动保存，不修改导入导出格式。"
+              subtitle="对话会自动保存到 chats store；导入导出仍保持 ST JSONL 兼容。"
             />
           </div>
           {archiveError ? <NoticeText kind="error" text={archiveError} /> : null}
@@ -1421,7 +1581,7 @@ export function ChatScreen() {
           <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
             选中的预设仅按 ST 原生 Chat Completion 结构参与 prompt 组装；不会执行
             TavernHelper、JS-Slash-Runner 或正则脚本。导入 JSONL 会保存到本地
-            chats store，并替换当前页面消息。
+            chats store，并替换当前页面消息；普通对话会自动保存。
           </div>
         </aside>
       </div>

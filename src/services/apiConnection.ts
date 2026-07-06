@@ -2,6 +2,9 @@ export interface ConnectionTestResult {
   ok: boolean;
   diagnostic: string;
   detail?: string;
+  models?: string[];
+  resolvedBaseUrl?: string;
+  selectedModel?: string;
 }
 
 export interface ConnectionTestInput {
@@ -26,12 +29,16 @@ export async function testOpenAICompatibleConnection(
   }
 
   let response: Response;
+  let resolvedBaseUrl = baseUrl;
 
   try {
-    response = await fetchFn(`${baseUrl}/models`, {
-      method: "GET",
+    response = await fetchModels(fetchFn, {
+      baseUrls: createBaseUrlCandidates(baseUrl),
       headers,
       signal: input.signal,
+      onResolvedBaseUrl: (value) => {
+        resolvedBaseUrl = value;
+      },
     });
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === "AbortError") {
@@ -92,17 +99,16 @@ export async function testOpenAICompatibleConnection(
   }
 
   if (response.ok) {
-    let modelCount: string | undefined;
-
-    if (typeof body === "object" && body !== null && "data" in body) {
-      const data = (body as Record<string, unknown>).data;
-      modelCount = Array.isArray(data) ? String(data.length) : undefined;
-    }
+    const models = extractModelIds(body);
+    const modelCount = models.length > 0 ? String(models.length) : undefined;
 
     return {
       ok: true,
       diagnostic: "连接成功！端点返回了模型列表。",
       detail: modelCount ? `检测到 ${modelCount} 个可用模型。` : undefined,
+      models,
+      resolvedBaseUrl,
+      selectedModel: selectModel(input.model, models),
     };
   }
 
@@ -117,4 +123,87 @@ function normalizeBaseUrl(raw: string): string {
   const trimmed = raw.trim().replace(/\/+$/, "");
 
   return trimmed || "http://127.0.0.1:8000/v1";
+}
+
+async function fetchModels(
+  fetchFn: typeof fetch,
+  input: {
+    baseUrls: string[];
+    headers: Record<string, string>;
+    onResolvedBaseUrl: (baseUrl: string) => void;
+    signal?: AbortSignal;
+  },
+): Promise<Response> {
+  let lastResponse: Response | undefined;
+
+  for (const candidateBaseUrl of input.baseUrls) {
+    const response = await fetchFn(`${candidateBaseUrl}/models`, {
+      method: "GET",
+      headers: input.headers,
+      signal: input.signal,
+    });
+
+    input.onResolvedBaseUrl(candidateBaseUrl);
+
+    if (response.status !== 404) {
+      return response;
+    }
+
+    lastResponse = response;
+  }
+
+  if (!lastResponse) {
+    throw new Error("没有可用的 Base URL 候选。");
+  }
+
+  return lastResponse;
+}
+
+function createBaseUrlCandidates(baseUrl: string): string[] {
+  if (/\/v1$/u.test(baseUrl)) {
+    return [baseUrl];
+  }
+
+  return [baseUrl, `${baseUrl}/v1`];
+}
+
+function extractModelIds(body: unknown): string[] {
+  if (typeof body !== "object" || body === null || !("data" in body)) {
+    return [];
+  }
+
+  const data = (body as Record<string, unknown>).data;
+
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+
+      if (typeof item === "object" && item !== null) {
+        const id = (item as Record<string, unknown>).id;
+
+        return typeof id === "string" ? id : undefined;
+      }
+
+      return undefined;
+    })
+    .filter((id): id is string => Boolean(id && id.trim().length > 0));
+}
+
+function selectModel(
+  requestedModel: string | undefined,
+  models: string[],
+): string | undefined {
+  const normalized = requestedModel?.trim();
+
+  if (normalized && models.includes(normalized)) {
+    return normalized;
+  }
+
+  return models[0];
 }

@@ -50,6 +50,7 @@ export function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
@@ -89,6 +90,7 @@ export function SettingsScreen() {
         worldIds: worldList.map((world) => world.id),
         quickReplySetIds: quickReplyList.map((set) => set.id),
       }));
+      setModelOptions([]);
       setStatusText("设置已载入");
     } catch (err: unknown) {
       if (shouldApply()) {
@@ -105,6 +107,13 @@ export function SettingsScreen() {
     void refresh(() => active);
     return () => { active = false; };
   }, [refresh]);
+
+  useEffect(() => {
+    applyAppAppearance({
+      fontScale: form.fontScale,
+      theme: form.theme,
+    });
+  }, [form.fontScale, form.theme]);
 
   const updateField = useCallback(
     <TKey extends keyof SettingsFormState>(key: TKey, value: SettingsFormState[TKey]) => {
@@ -133,6 +142,22 @@ export function SettingsScreen() {
       });
 
       setTestResult(result);
+
+      if (result.ok && result.models && result.models.length > 0) {
+        setModelOptions(result.models);
+        setForm((current) => {
+          const selectedModel =
+            result.selectedModel && result.models?.includes(result.selectedModel)
+              ? result.selectedModel
+              : result.models?.[0] ?? current.model;
+
+          return {
+            ...current,
+            baseUrl: result.resolvedBaseUrl ?? current.baseUrl,
+            model: selectedModel,
+          };
+        });
+      }
     } catch (err: unknown) {
       setTestResult({
         ok: false,
@@ -275,7 +300,7 @@ export function SettingsScreen() {
           <SettingsPanel
             icon={<Wifi size={18} />}
             title="API 连接"
-            subtitle="保存 OpenAI 兼容接口默认值，并可测试连接是否可用。"
+            subtitle="测试连接会读取 /models，成功后自动填入可用模型。"
           >
             <TextField
               label="API Base URL"
@@ -290,12 +315,24 @@ export function SettingsScreen() {
               placeholder="仅保存在本地 IndexedDB"
               onChange={(value) => updateField("apiKey", value)}
             />
-            <TextField
-              label="模型名"
-              value={form.model}
-              placeholder={defaultApiModel}
-              onChange={(value) => updateField("model", value)}
-            />
+            {modelOptions.length > 0 ? (
+              <SelectField
+                label="模型名"
+                value={form.model}
+                onChange={(value) => updateField("model", value)}
+                options={modelOptions.map((modelName) => ({
+                  value: modelName,
+                  label: modelName,
+                }))}
+              />
+            ) : (
+              <TextField
+                label="模型名"
+                value={form.model}
+                placeholder="测试连接后会自动填入模型"
+                onChange={(value) => updateField("model", value)}
+              />
+            )}
             <div className="flex items-center gap-3">
               <button
                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-2.5 text-sm font-medium transition hover:border-[var(--border-strong)] disabled:opacity-60"
@@ -319,6 +356,11 @@ export function SettingsScreen() {
               <div className={`rounded-lg border p-3 text-sm leading-6 ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
                 <p className="font-medium">{testResult.diagnostic}</p>
                 {testResult.detail ? <p className="mt-1 text-xs opacity-80">{testResult.detail}</p> : null}
+                {testResult.ok && testResult.selectedModel ? (
+                  <p className="mt-1 text-xs opacity-80">
+                    已选择模型：{testResult.selectedModel}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </SettingsPanel>
@@ -378,7 +420,7 @@ export function SettingsScreen() {
           <SettingsPanel
             icon={<Palette size={18} />}
             title="界面偏好"
-            subtitle="主题与字号先保存设置，视觉应用后续统一接入。"
+            subtitle="主题与字号会即时预览，保存后下次启动继续使用。"
           >
             <SelectField
               label="主题"

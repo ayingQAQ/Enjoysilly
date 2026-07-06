@@ -1,4 +1,4 @@
-import { ChevronRight, Database, Moon, Search } from "lucide-react";
+import { ChevronRight, Moon, Search } from "lucide-react";
 
 import { workspaceSections } from "../data/workspace";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
@@ -15,13 +15,15 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex min-h-screen flex-col bg-[var(--app-bg)] text-[var(--text-primary)]">
       <header className="flex h-16 items-center border-b border-[var(--border-soft)] bg-[var(--surface)] px-5">
         <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-lg bg-[var(--accent)] text-white shadow-sm">
-            <Database size={18} />
-          </div>
+          <img
+            alt="Enjoy Silly 图标"
+            className="size-10 rounded-xl object-cover shadow-sm"
+            src="/enjoy-silly-icon.png"
+          />
           <div>
-            <p className="text-base font-semibold tracking-tight">墨 · my_silly</p>
+            <p className="text-base font-semibold tracking-tight">Enjoy Silly</p>
             <p className="text-xs text-[var(--text-muted)]">
-              SillyTavern 兼容工作台
+              SillyTavern 兼容角色扮演工作台
             </p>
           </div>
         </div>

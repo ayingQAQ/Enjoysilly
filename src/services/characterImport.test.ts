@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { deleteDB } from "idb";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getCharacter, openMySillyDatabase } from "../lib/db";
+import { getCharacter, getWorldInfo, openMySillyDatabase } from "../lib/db";
 import { createStoredCharacter, importCharacterToDatabase } from "./characterImport";
 
 const fixturesDir = join(process.cwd(), "test-fixtures");
@@ -74,6 +74,10 @@ describe("character import service", () => {
       expect(result.stored.sourcePngBytes?.byteLength).toBe(bytes.byteLength);
       expect(result.stored.sourcePngBytes?.[0]).toBe(bytes[0]);
       expect(result.stored.sourcePngBytes?.[1]).toBe(bytes[1]);
+      expect(result.embeddedWorldInfo).toMatchObject({
+        id: "honglou__character_book",
+        name: `${result.stored.name} · 内嵌世界书`,
+      });
       expect(result.result).toMatchObject({
         assetKind: "character",
         fileName: "card.png",
@@ -87,6 +91,15 @@ describe("character import service", () => {
 
       expect(stored?.id).toBe(result.stored.id);
       expect(stored?.sourcePngBytes?.byteLength).toBe(bytes.byteLength);
+
+      const embeddedWorldInfo = await getWorldInfo(
+        "honglou__character_book",
+        database,
+      );
+
+      expect(embeddedWorldInfo?.payload).toEqual(
+        result.imported.card.data.character_book,
+      );
     } finally {
       database.close();
     }

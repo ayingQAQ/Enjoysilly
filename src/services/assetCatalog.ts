@@ -24,6 +24,7 @@ export interface CharacterAssetSummary {
   description: string;
   tags: string[];
   avatar?: string;
+  avatarUrl?: string;
   worldEntryCount: number;
 }
 
@@ -105,8 +106,38 @@ function toCharacterAssetSummary(character: StoredCharacter): CharacterAssetSumm
     description: firstNonEmptyText(data.description, data.scenario, data.personality),
     tags: Array.isArray(data.tags) ? data.tags : [],
     avatar: typeof data.avatar === "string" ? data.avatar : undefined,
+    avatarUrl: createCharacterAvatarUrl(character),
     worldEntryCount: data.character_book?.entries.length ?? 0,
   };
+}
+
+function createCharacterAvatarUrl(character: StoredCharacter): string | undefined {
+  const dataAvatar = character.payload.data.avatar;
+
+  if (
+    typeof dataAvatar === "string" &&
+    (/^data:image\//u.test(dataAvatar) || /^https?:\/\//u.test(dataAvatar))
+  ) {
+    return dataAvatar;
+  }
+
+  if (character.sourcePngBytes && character.sourcePngBytes.length > 0) {
+    return `data:image/png;base64,${bytesToBase64(character.sourcePngBytes)}`;
+  }
+
+  return undefined;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
 }
 
 function toPresetAssetSummary(preset: StoredPreset): PresetAssetSummary {

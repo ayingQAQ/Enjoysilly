@@ -6,6 +6,9 @@ import {
   Eye,
   FileJson2,
   ImagePlus,
+  Search,
+  SlidersHorizontal,
+  Star,
   Trash2,
   Upload,
   X,
@@ -32,6 +35,8 @@ interface CharacterNotice {
   message: string;
 }
 
+type CharacterSortMode = "updated" | "name" | "worldEntries";
+
 export function CharactersScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [characters, setCharacters] = useState<CharacterAssetSummary[]>([]);
@@ -44,7 +49,15 @@ export function CharactersScreen() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<CharacterNotice | null>(null);
+  const [query, setQuery] = useState("");
+  const [sortMode, setSortMode] = useState<CharacterSortMode>("updated");
+  const [showWorldLinkedOnly, setShowWorldLinkedOnly] = useState(false);
   const isCharacterActionBusy = busyCharacterId !== null;
+  const filteredCharacters = getFilteredCharacters(characters, {
+    query,
+    showWorldLinkedOnly,
+    sortMode,
+  });
 
   const refreshCharacters = useCallback(
     async (shouldApply: () => boolean = () => true) => {
@@ -245,19 +258,19 @@ export function CharactersScreen() {
   }, []);
 
   return (
-    <section className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-5 py-6 lg:px-8">
-      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+    <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-5 lg:px-8">
+      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <p className="mb-2 text-sm font-medium text-[var(--accent-strong)]">
-              角色卡管理
+              角色卡
             </p>
-            <h1 className="max-w-2xl text-3xl font-semibold tracking-tight">
-              从真实 SillyTavern PNG / JSON 角色卡开始，建立资产列表闭环。
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              角色库
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
-              当前页面读取 IndexedDB 中的角色卡记录；导入会走兼容层解析，保留未知字段、
-              `extensions` 与内嵌世界书，后续导出会沿用同一份原始 payload。
+              管理本地 SillyTavern PNG / JSON 角色卡，保留未知字段、extensions
+              与内嵌世界书，导入后可查看详情并按原始 payload 导出。
             </p>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -278,7 +291,7 @@ export function CharactersScreen() {
               </p>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex shrink-0 flex-wrap gap-3">
             <input
               ref={fileInputRef}
               className="hidden"
@@ -301,139 +314,222 @@ export function CharactersScreen() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryTile label="角色卡" value={characters.length} />
+        <SummaryTile label="全部角色" value={characters.length} />
         <SummaryTile
           label="内嵌世界书"
           value={characters.filter((character) => character.worldEntryCount > 0).length}
         />
         <SummaryTile
-          label="世界书条目"
-          value={characters.reduce(
-            (total, character) => total + character.worldEntryCount,
-            0,
-          )}
+          label="标签数量"
+          value={getUniqueTagCount(characters)}
         />
       </div>
 
-      {isLoading ? (
-        <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 text-sm text-[var(--text-secondary)] shadow-sm">
-          正在读取本地角色卡...
-        </div>
-      ) : null}
+      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">搜索角色</span>
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+              size={18}
+            />
+            <input
+              className="w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[var(--accent)]"
+              placeholder="搜索角色名、描述或标签"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
 
-      {!isLoading && !error && characters.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface)] p-8 shadow-sm">
-          <div className="mb-4 grid size-12 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
-            <ImagePlus size={22} />
-          </div>
-          <h2 className="text-lg font-semibold">还没有角色卡</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">
-            可以导入 SillyTavern 导出的 `.png` 角色卡或独立 `.json` 角色卡。导入后这里会显示
-            spec、标签、描述摘要和内嵌世界书条目数。
-          </p>
-          <button
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
-            type="button"
-            onClick={handlePickFiles}
-          >
-            <Upload size={16} />
-            选择角色卡文件
-          </button>
-        </div>
-      ) : null}
-
-      {!isLoading && characters.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {characters.map((character) => (
-            <article
-              key={character.id}
-              className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm"
+          <div className="flex flex-wrap gap-2">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+              <SlidersHorizontal size={16} />
+              <span className="sr-only">排序</span>
+              <select
+                className="bg-transparent text-[var(--text-primary)] outline-none"
+                value={sortMode}
+                onChange={(event) =>
+                  setSortMode(event.target.value as CharacterSortMode)
+                }
+              >
+                <option value="updated">最近更新</option>
+                <option value="name">名称 A-Z</option>
+                <option value="worldEntries">世界书条目</option>
+              </select>
+            </label>
+            <button
+              className={[
+                "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition",
+                showWorldLinkedOnly
+                  ? "border-[var(--accent)] bg-[var(--accent-weak)] text-[var(--accent-strong)]"
+                  : "border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]",
+              ].join(" ")}
+              type="button"
+              onClick={() => setShowWorldLinkedOnly((value) => !value)}
             >
-              <div className="mb-4 flex items-start gap-3">
-                <div className="grid size-12 shrink-0 place-items-center rounded-lg bg-[var(--accent-weak)] text-base font-semibold text-[var(--accent-strong)]">
-                  {character.name.slice(0, 1) || <Bot size={20} />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-base font-semibold">
+              <Star size={16} />
+              有世界书
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold">角色列表</h2>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                显示 {filteredCharacters.length} / {characters.length} 个角色
+              </p>
+            </div>
+            <button
+              className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-sm font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)]"
+              type="button"
+              onClick={handlePickFiles}
+            >
+              <Upload size={16} />
+              导入
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] p-5 text-sm text-[var(--text-secondary)]">
+              正在读取本地角色卡...
+            </div>
+          ) : null}
+
+          {!isLoading && !error && characters.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-8 text-center">
+              <div className="mx-auto mb-4 grid size-14 place-items-center rounded-full bg-[var(--accent-weak)] text-[var(--accent-strong)]">
+                <ImagePlus size={24} />
+              </div>
+              <h3 className="text-lg font-semibold">还没有角色卡</h3>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-7 text-[var(--text-secondary)]">
+                导入 SillyTavern `.png` 角色卡或独立 `.json` 角色卡后，这里会显示头像、
+                标签、描述摘要和内嵌世界书状态。
+              </p>
+              <button
+                className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+                type="button"
+                onClick={handlePickFiles}
+              >
+                <Upload size={16} />
+                选择角色卡文件
+              </button>
+            </div>
+          ) : null}
+
+          {!isLoading && characters.length > 0 && filteredCharacters.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-8 text-center">
+              <h3 className="text-lg font-semibold">没有匹配的角色</h3>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                调整搜索关键词或关闭“有世界书”筛选后再试。
+              </p>
+            </div>
+          ) : null}
+
+          {!isLoading && filteredCharacters.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {filteredCharacters.map((character) => (
+                <article
+                  key={character.id}
+                  className="group rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
+                >
+                  <button
+                    className="mx-auto block rounded-full outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    disabled={isCharacterActionBusy || isDetailLoading}
+                    type="button"
+                    onClick={() => void handleOpenCharacterDetail(character.id)}
+                  >
+                    <CharacterAvatar character={character} />
+                  </button>
+                  <h3 className="mt-3 truncate text-sm font-semibold">
                     {character.name}
-                  </h2>
+                  </h3>
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
                     {formatSpec(character.spec, character.specVersion)}
                   </p>
-                </div>
-              </div>
+                  <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-[var(--text-secondary)]">
+                    {character.description || "未填写描述摘要"}
+                  </p>
 
-              <p className="min-h-12 text-sm leading-6 text-[var(--text-secondary)]">
-                {character.description || "这个角色卡没有提供描述摘要。"}
-              </p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                    {character.tags.slice(0, 2).map((tag) => (
+                      <span
+                        key={tag}
+                        className="max-w-full truncate rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {character.worldEntryCount > 0 ? (
+                      <span className="rounded-full bg-[var(--accent-weak)] px-2 py-0.5 text-[11px] text-[var(--accent-strong)]">
+                        世界书 {character.worldEntryCount}
+                      </span>
+                    ) : null}
+                  </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {character.tags.length > 0 ? (
-                  character.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
+                  <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-[var(--border-soft)] pt-3">
+                    <IconActionButton
+                      disabled={isCharacterActionBusy || isDetailLoading}
+                      label="查看详情"
+                      onClick={() => void handleOpenCharacterDetail(character.id)}
                     >
-                      {tag}
-                    </span>
-                  ))
-                ) : (
-                  <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-xs text-[var(--text-muted)]">
-                    未设置标签
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isCharacterActionBusy || isDetailLoading}
-                  type="button"
-                  onClick={() => void handleOpenCharacterDetail(character.id)}
-                >
-                  <Eye size={14} />
-                  查看详情
-                </button>
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isCharacterActionBusy}
-                  type="button"
-                  onClick={() => void handleExportCharacter(character.id)}
-                >
-                  <Download size={14} />
-                  导出 JSON
-                </button>
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isCharacterActionBusy}
-                  type="button"
-                  onClick={() => void handleExportCharacterPng(character.id)}
-                >
-                  <ImagePlus size={14} />
-                  导出 PNG
-                </button>
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:border-red-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isCharacterActionBusy}
-                  type="button"
-                  onClick={() => void handleDeleteCharacter(character)}
-                >
-                  <Trash2 size={14} />
-                  删除
-                </button>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-[var(--border-soft)] pt-3 text-xs text-[var(--text-muted)]">
-                <span className="inline-flex items-center gap-1.5">
-                  <FileJson2 size={14} />
-                  世界书 {character.worldEntryCount} 条
-                </span>
-                <span>{formatDate(character.updatedAt)}</span>
-              </div>
-            </article>
-          ))}
+                      <Eye size={14} />
+                    </IconActionButton>
+                    <IconActionButton
+                      disabled={isCharacterActionBusy}
+                      label="导出 JSON"
+                      onClick={() => void handleExportCharacter(character.id)}
+                    >
+                      <Download size={14} />
+                    </IconActionButton>
+                    <IconActionButton
+                      disabled={isCharacterActionBusy}
+                      label="导出 PNG"
+                      onClick={() => void handleExportCharacterPng(character.id)}
+                    >
+                      <ImagePlus size={14} />
+                    </IconActionButton>
+                    <IconActionButton
+                      danger
+                      disabled={isCharacterActionBusy}
+                      label="删除"
+                      onClick={() => void handleDeleteCharacter(character)}
+                    >
+                      <Trash2 size={14} />
+                    </IconActionButton>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+
+        <aside className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm xl:sticky xl:top-5 xl:self-start">
+          <h2 className="text-base font-semibold">库概览</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+            角色数据全部保存在浏览器本地。当前页面只展示与导入导出，不会改写角色卡内容。
+          </p>
+          <div className="mt-4 space-y-2 text-sm">
+            <DetailLine label="角色数量" value={characters.length} />
+            <DetailLine
+              label="带世界书"
+              value={characters.filter((character) => character.worldEntryCount > 0).length}
+            />
+            <DetailLine
+              label="世界书条目"
+              value={characters.reduce(
+                (total, character) => total + character.worldEntryCount,
+                0,
+              )}
+            />
+            <DetailLine label="当前筛选" value={filteredCharacters.length} />
+          </div>
+        </aside>
+      </div>
 
       {detailError ? (
         <p
@@ -459,6 +555,56 @@ export function CharactersScreen() {
         />
       ) : null}
     </section>
+  );
+}
+
+function CharacterAvatar({ character }: { character: CharacterAssetSummary }) {
+  return (
+    <div className="grid size-20 place-items-center overflow-hidden rounded-full border border-[var(--border-soft)] bg-[var(--accent-weak)] text-xl font-semibold text-[var(--accent-strong)] shadow-sm sm:size-24">
+      {character.avatarUrl ? (
+        <img
+          alt={`${character.name} 头像`}
+          className="size-full object-cover"
+          src={character.avatarUrl}
+        />
+      ) : character.name.trim().length > 0 ? (
+        character.name.trim().slice(0, 1)
+      ) : (
+        <Bot size={28} />
+      )}
+    </div>
+  );
+}
+
+function IconActionButton({
+  children,
+  danger = false,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className={[
+        "grid min-h-9 place-items-center rounded-lg border text-[var(--text-primary)] transition disabled:cursor-not-allowed disabled:opacity-50",
+        danger
+          ? "border-red-200 bg-red-50 text-red-700 hover:border-red-300"
+          : "border-[var(--border-soft)] bg-[var(--surface-muted)] hover:border-[var(--border-strong)]",
+      ].join(" ")}
+      disabled={disabled}
+      title={label}
+      type="button"
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -686,6 +832,56 @@ function formatPreservedFields(detail: CharacterDetailSummary): string {
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(" · ") : "无";
+}
+
+function getFilteredCharacters(
+  characters: CharacterAssetSummary[],
+  options: {
+    query: string;
+    showWorldLinkedOnly: boolean;
+    sortMode: CharacterSortMode;
+  },
+): CharacterAssetSummary[] {
+  const query = options.query.trim().toLocaleLowerCase("zh-CN");
+  const filtered = characters.filter((character) => {
+    if (options.showWorldLinkedOnly && character.worldEntryCount === 0) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    const haystack = [
+      character.name,
+      character.description,
+      character.specVersion,
+      ...character.tags,
+    ]
+      .join("\n")
+      .toLocaleLowerCase("zh-CN");
+
+    return haystack.includes(query);
+  });
+
+  return filtered.sort((a, b) => {
+    if (options.sortMode === "name") {
+      return a.name.localeCompare(b.name, "zh-CN");
+    }
+
+    if (options.sortMode === "worldEntries") {
+      return (
+        b.worldEntryCount - a.worldEntryCount ||
+        a.name.localeCompare(b.name, "zh-CN")
+      );
+    }
+
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+}
+
+function getUniqueTagCount(characters: CharacterAssetSummary[]): number {
+  return new Set(characters.flatMap((character) => character.tags)).size;
 }
 
 function formatDate(value: string): string {
