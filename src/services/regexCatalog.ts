@@ -44,6 +44,25 @@ export interface RegexCatalogSummary {
   items: RegexCatalogItem[];
 }
 
+export type RegexCatalogStatusFilter = "all" | "enabled" | "disabled";
+export type RegexCatalogFlagFilter =
+  | "all"
+  | "runOnEdit"
+  | "promptOnly"
+  | "markdownOnly";
+
+export interface RegexCatalogFilterOptions {
+  query?: string;
+  status?: RegexCatalogStatusFilter;
+  flag?: RegexCatalogFlagFilter;
+  placement?: number | "all";
+}
+
+export interface RegexCatalogFilterSummaryInput extends RegexCatalogFilterOptions {
+  shownCount: number;
+  totalCount: number;
+}
+
 const knownRegexScriptFields = new Set([
   "id",
   "scriptName",
@@ -58,6 +77,16 @@ const knownRegexScriptFields = new Set([
   "substituteRegex",
   "minDepth",
   "maxDepth",
+]);
+
+const regexPlacementLabels = new Map<number, string>([
+  [0, "0 · Markdown 显示（已废弃）"],
+  [1, "1 · 用户输入"],
+  [2, "2 · AI 输出"],
+  [3, "3 · 斜杠命令"],
+  [4, "4 · sendAs（legacy）"],
+  [5, "5 · 世界书"],
+  [6, "6 · 推理块"],
 ]);
 
 export async function loadRegexCatalogSummary(
@@ -90,6 +119,72 @@ export function createRegexCatalogSummary(
     markdownOnlyCount: items.filter((item) => item.markdownOnly).length,
     items,
   };
+}
+
+export function filterRegexCatalogItems(
+  items: RegexCatalogItem[],
+  options: RegexCatalogFilterOptions = {},
+): RegexCatalogItem[] {
+  const query = options.query?.trim().toLocaleLowerCase() ?? "";
+  const status = options.status ?? "all";
+  const flag = options.flag ?? "all";
+  const placement = options.placement ?? "all";
+
+  return items.filter((item) => {
+    if (status === "enabled" && item.disabled) {
+      return false;
+    }
+
+    if (status === "disabled" && !item.disabled) {
+      return false;
+    }
+
+    if (flag === "runOnEdit" && !item.runOnEdit) {
+      return false;
+    }
+
+    if (flag === "promptOnly" && !item.promptOnly) {
+      return false;
+    }
+
+    if (flag === "markdownOnly" && !item.markdownOnly) {
+      return false;
+    }
+
+    if (
+      typeof placement === "number" &&
+      !item.placement.includes(placement)
+    ) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return createSearchText(item).includes(query);
+  });
+}
+
+export function hasRegexCatalogFilters(
+  options: RegexCatalogFilterOptions = {},
+): boolean {
+  return (
+    (options.query?.trim().length ?? 0) > 0 ||
+    (options.status ?? "all") !== "all" ||
+    (options.flag ?? "all") !== "all" ||
+    (options.placement ?? "all") !== "all"
+  );
+}
+
+export function createRegexCatalogFilterSummary(
+  input: RegexCatalogFilterSummaryInput,
+): string {
+  if (!hasRegexCatalogFilters(input)) {
+    return `当前显示全部 ${input.totalCount} 条正则脚本。`;
+  }
+
+  return `当前显示 ${input.shownCount} / ${input.totalCount} 条正则脚本。`;
 }
 
 function toRegexCatalogItems(preset: StoredPreset): RegexCatalogItem[] {
@@ -150,6 +245,21 @@ function toRegexCatalogItem(
   };
 }
 
+function createSearchText(item: RegexCatalogItem): string {
+  return [
+    item.scriptName,
+    item.sourcePresetName,
+    item.scriptId,
+    item.findRegex,
+    item.replaceString,
+    ...item.placementLabels,
+    ...item.unknownFieldNames,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n")
+    .toLocaleLowerCase();
+}
+
 function firstNonEmptyText(...values: Array<string | undefined>): string {
   return values.find((value) => value && value.trim().length > 0)?.trim() ?? "";
 }
@@ -165,7 +275,7 @@ function createPreview(value: string, maxLength = 140): string {
 }
 
 function formatPlacementValue(value: number): string {
-  return `placement:${value}`;
+  return regexPlacementLabels.get(value) ?? `${value} · 未知 placement`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
