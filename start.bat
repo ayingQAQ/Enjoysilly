@@ -20,7 +20,8 @@ if not exist "node_modules\" (
 )
 
 echo [2/2] Starting Vite dev server...
-echo.
+echo Opening browser at http://localhost:5173 ...
+start "" http://localhost:5173
 call npm run dev
 
 pause
