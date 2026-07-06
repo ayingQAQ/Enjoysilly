@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
+import { renderSafeMarkdownToHtml } from "../lib/markdown";
+import { estimateTextTokens } from "../lib/tokenEstimate";
 import type { CharacterDetailSummary } from "../services/characterDetails";
 import type { ChatArchiveSummary } from "../services/chatArchive";
 import type { PresetDetailSummary } from "../services/presetDetails";
@@ -37,6 +39,8 @@ export function ChatBubble({
   const isUser = message.is_user === true;
   const canReroll = message.is_user !== true && message.is_system !== true;
   const content = getChatMessageDisplayText(message);
+  const contentHtml = renderSafeMarkdownToHtml(content);
+  const estimatedTokens = estimateTextTokens(content);
   const swipeCount = getMessageSwipeCount(message);
   const swipeIndex = normalizeMessageSwipeIndex(message);
 
@@ -54,6 +58,7 @@ export function ChatBubble({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="font-medium">{message.name}</span>
             {message.send_date ? <span>{message.send_date}</span> : null}
+            {content ? <span>约 {estimatedTokens} token</span> : null}
           </div>
           <div className="flex shrink-0 gap-1">
             <button
@@ -94,9 +99,19 @@ export function ChatBubble({
             ) : null}
           </div>
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-7">
-          {content || "正在生成..."}
-        </p>
+        {content ? (
+          <div
+            className={[
+              "chat-markdown break-words text-sm leading-7",
+              isUser ? "chat-markdown-user" : "",
+            ].join(" ")}
+            dangerouslySetInnerHTML={{ __html: contentHtml }}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap break-words text-sm leading-7">
+            正在生成...
+          </p>
+        )}
         {swipeCount > 1 ? (
           <div
             className={[

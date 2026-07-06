@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
+import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
 import {
   runStreamingChatContinue,
   runStreamingChatReroll,
@@ -204,6 +205,10 @@ export function ChatScreen() {
     loadedArchiveName,
     messageCount: messages.length,
   });
+  const estimatedTokenCount = useMemo(
+    () => estimateChatMessagesTokens(messages),
+    [messages],
+  );
 
   const refreshChatArchives = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -1035,8 +1040,9 @@ export function ChatScreen() {
               也可以导入/导出 ST JSONL，并手动保存为兼容快照，不修改角色卡、世界书、预设或正则脚本 payload。
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+          <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
             <SummaryTile label="消息行" value={messages.length} />
+            <SummaryTile label="Token 估算" value={`约 ${estimatedTokenCount}`} compact />
             <SummaryTile label="草稿" value={draftStatus} compact />
             <SummaryTile label="模型" value={model.trim() || "未设置"} compact />
           </div>
@@ -1053,7 +1059,9 @@ export function ChatScreen() {
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold">本地对话窗口</h2>
                 <p className="truncate text-xs text-[var(--text-muted)]">
-                  {activeCharacter.data.name} · {normalizeName(userName, defaultUserName)}
+                  {activeCharacter.data.name} ·{" "}
+                  {normalizeName(userName, defaultUserName)} · 约{" "}
+                  {estimatedTokenCount} token
                 </p>
                 {loadedArchiveName ? (
                   <p className="truncate text-xs text-[var(--text-muted)]">
