@@ -10,7 +10,10 @@ import { openMySillyDatabase, savePreset, type StoredPreset } from "../lib/db";
 import { parseChatCompletionPresetJson } from "../lib/presetIO";
 import { importPresetToDatabase } from "./presetImport";
 import {
+  createRegexCatalogFilterSummary,
   createRegexCatalogSummary,
+  filterRegexCatalogItems,
+  hasRegexCatalogFilters,
   loadRegexCatalogSummary,
 } from "./regexCatalog";
 
@@ -116,7 +119,7 @@ describe("regex catalog service", () => {
       scriptName: "清理输出",
       disabled: true,
       placement: [1, 2],
-      placementLabels: ["placement:1", "placement:2"],
+      placementLabels: ["1 · 用户输入", "2 · AI 输出"],
       promptOnly: true,
       markdownOnly: true,
       runOnEdit: true,
@@ -155,6 +158,119 @@ describe("regex catalog service", () => {
     expect(summary.items).toEqual([]);
   });
 
+  it("filters catalog items by text, ST status, and inert flags", () => {
+    const summary = createRegexCatalogSummary([
+      createStoredPreset({
+        id: "preset-a",
+        name: "日常预设",
+        updatedAt: "2026-07-04T09:00:00.000Z",
+        regexScripts: [
+          {
+            id: "cleanup",
+            scriptName: "清理 markdown",
+            findRegex: "/\\*\\*/g",
+            replaceString: "",
+            disabled: false,
+            markdownOnly: true,
+          },
+          {
+            id: "edit-only",
+            scriptName: "编辑时替换",
+            findRegex: "/edit/g",
+            replaceString: "EDIT",
+            disabled: true,
+            runOnEdit: true,
+          },
+        ],
+      }),
+      createStoredPreset({
+        id: "preset-b",
+        name: "Prompt 预设",
+        updatedAt: "2026-07-04T10:00:00.000Z",
+        regexScripts: [
+          {
+            id: "prompt-only",
+            scriptName: "Prompt 修正",
+            findRegex: "/prompt/g",
+            replaceString: "PROMPT",
+            disabled: false,
+            placement: [5],
+            promptOnly: true,
+          },
+        ],
+      }),
+    ]);
+    const before = structuredClone(summary.items);
+
+    expect(
+      filterRegexCatalogItems(summary.items, { query: "markdown" }).map(
+        (item) => item.scriptId,
+      ),
+    ).toEqual(["cleanup"]);
+    expect(
+      filterRegexCatalogItems(summary.items, { status: "enabled" }).map(
+        (item) => item.scriptId,
+      ),
+    ).toEqual(["prompt-only", "cleanup"]);
+    expect(
+      filterRegexCatalogItems(summary.items, { status: "disabled" }).map(
+        (item) => item.scriptId,
+      ),
+    ).toEqual(["edit-only"]);
+    expect(
+      filterRegexCatalogItems(summary.items, { flag: "runOnEdit" }).map(
+        (item) => item.scriptId,
+      ),
+    ).toEqual(["edit-only"]);
+    expect(
+      filterRegexCatalogItems(summary.items, { placement: 5 }).map(
+        (item) => item.scriptId,
+      ),
+    ).toEqual(["prompt-only"]);
+    expect(
+      filterRegexCatalogItems(summary.items, {
+        query: "prompt",
+        flag: "promptOnly",
+        placement: 5,
+        status: "enabled",
+      }).map((item) => item.scriptId),
+    ).toEqual(["prompt-only"]);
+    expect(
+      filterRegexCatalogItems(summary.items, {
+        query: "prompt",
+        flag: "promptOnly",
+        status: "enabled",
+      }).map((item) => item.scriptId),
+    ).toEqual(["prompt-only"]);
+    expect(summary.items).toEqual(before);
+  });
+
+  it("summarizes active catalog filters", () => {
+    expect(hasRegexCatalogFilters()).toBe(false);
+    expect(
+      hasRegexCatalogFilters({
+        query: "   ",
+        status: "all",
+        flag: "all",
+        placement: "all",
+      }),
+    ).toBe(false);
+    expect(hasRegexCatalogFilters({ placement: 5 })).toBe(true);
+    expect(
+      createRegexCatalogFilterSummary({
+        shownCount: 12,
+        totalCount: 12,
+      }),
+    ).toBe("当前显示全部 12 条正则脚本。");
+    expect(
+      createRegexCatalogFilterSummary({
+        query: "prompt",
+        shownCount: 2,
+        totalCount: 12,
+      }),
+    ).toBe("当前显示 2 / 12 条正则脚本。");
+  });
+
   it("skips malformed regex entries and tolerates missing fields", () => {
     const summary = createRegexCatalogSummary([
       {
@@ -173,7 +289,7 @@ describe("regex catalog service", () => {
                 scriptName: 123,
                 findRegex: 456,
                 replaceString: false,
-                placement: [1, "bad", 3],
+            placement: [1, "bad", 3, 99],
                 extraField: "keep",
               },
             ],
@@ -192,8 +308,12 @@ describe("regex catalog service", () => {
         scriptName: "未命名正则 #1",
         findRegex: "",
         replaceString: "",
-        placement: [1, 3],
-        placementLabels: ["placement:1", "placement:3"],
+        placement: [1, 3, 99],
+        placementLabels: [
+          "1 · 用户输入",
+          "3 · 斜杠命令",
+          "99 · 未知 placement",
+        ],
         unknownFieldNames: ["extraField"],
       }),
     ]);
