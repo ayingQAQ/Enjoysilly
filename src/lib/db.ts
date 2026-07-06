@@ -307,6 +307,13 @@ export async function getSetting(
   return db.get("settings", key);
 }
 
+export async function listSettings(
+  database?: MySillyDatabaseConnection,
+): Promise<StoredSetting[]> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.getAll("settings");
+}
+
 function createEntityStore(
   database: MySillyDatabaseConnection,
   storeName: "characters" | "presets" | "worlds",

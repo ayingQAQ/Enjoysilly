@@ -11,11 +11,14 @@ import {
   createLocalChatCharacter,
   createMinimalChatPreset,
   deleteChatMessageAt,
+  extractWorldInfoEntries,
   getChatArchiveFilterCharacterId,
   getLastAssistantMessageIndex,
+  resolveDefaultWorldInfoEntries,
   selectChatCharacterPayload,
   selectChatPresetPayload,
   selectChatMessageSwipeAt,
+  selectVisibleQuickReplySets,
   updateChatMessageTextAt,
 } from "./chatScreenHelpers";
 import type { ChatMessageLine } from "../types/chat";
@@ -529,5 +532,121 @@ describe("ChatScreen helpers", () => {
 
     expect(state.userName).toBe("User");
     expect(state.characterName).toBeUndefined();
+  });
+});
+
+describe("resolveDefaultWorldInfoEntries", () => {
+  it("returns undefined for missing defaultWorldId", () => {
+    const result = resolveDefaultWorldInfoEntries(undefined, {
+      id: "w1",
+      name: "世界书",
+      createdAt: "",
+      updatedAt: "",
+      payload: { entries: [{ key: ["test"], content: "text" }] },
+    } as Parameters<typeof resolveDefaultWorldInfoEntries>[1]);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined for null worldInfo", () => {
+    const result = resolveDefaultWorldInfoEntries("w1", null);
+
+    expect(result).toBeUndefined();
+  });
+
+  it("extracts entries from portable world info", () => {
+    const worldInfo = {
+      id: "w1",
+      name: "世界书",
+      createdAt: "",
+      updatedAt: "",
+      payload: {
+        entries: [
+          { key: ["test"], content: "hello" },
+          { key: ["foo"], content: "bar" },
+        ],
+      },
+    } as Parameters<typeof resolveDefaultWorldInfoEntries>[1];
+
+    const result = resolveDefaultWorldInfoEntries("w1", worldInfo);
+
+    expect(result).toHaveLength(2);
+    expect(result?.[0]).toEqual(expect.objectContaining({ key: ["test"], content: "hello" }));
+  });
+
+  it("extracts entries from native world info", () => {
+    const worldInfo = {
+      id: "w1",
+      name: "世界书",
+      createdAt: "",
+      updatedAt: "",
+      payload: {
+        entries: {
+          "0": { key: ["test"], content: "hello" },
+          "1": { key: ["foo"], content: "bar" },
+        },
+      },
+    } as Parameters<typeof resolveDefaultWorldInfoEntries>[1];
+
+    const result = resolveDefaultWorldInfoEntries("w1", worldInfo);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("returns empty entries as undefined", () => {
+    const worldInfo = {
+      id: "w1",
+      name: "空世界书",
+      createdAt: "",
+      updatedAt: "",
+      payload: { entries: [] },
+    } as Parameters<typeof resolveDefaultWorldInfoEntries>[1];
+
+    const result = resolveDefaultWorldInfoEntries("w1", worldInfo);
+
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("extractWorldInfoEntries", () => {
+  it("extracts array entries from portable format", () => {
+    const entries = extractWorldInfoEntries({
+      entries: [
+        { key: ["test"], content: "hello" },
+      ],
+    });
+
+    expect(entries).toHaveLength(1);
+  });
+
+  it("extracts object entries from native format", () => {
+    const entries = extractWorldInfoEntries({
+      entries: {
+        "0": { key: ["test"], content: "hello" },
+        "1": { key: ["foo"], content: "bar" },
+      },
+    });
+
+    expect(entries).toHaveLength(2);
+  });
+});
+
+describe("selectVisibleQuickReplySets", () => {
+  const setA = { id: "qr-a", name: "快速回复A", createdAt: "", updatedAt: "", payload: { name: "A", qrList: [{ label: "L1", message: "M1" }] } };
+  const setB = { id: "qr-b", name: "快速回复B", createdAt: "", updatedAt: "", payload: { name: "B", qrList: [{ label: "L2", message: "M2" }] } };
+  const allSets = [setA, setB];
+
+  it("returns all sets when defaultQuickReplySetId is undefined", () => {
+    expect(selectVisibleQuickReplySets(allSets, undefined)).toEqual(allSets);
+  });
+
+  it("returns only the default set when it exists", () => {
+    const result = selectVisibleQuickReplySets(allSets, "qr-b");
+
+    expect(result).toEqual([setB]);
+  });
+
+  it("falls back to all sets when default id is not found", () => {
+    expect(selectVisibleQuickReplySets(allSets, "qr-nonexistent")).toEqual(allSets);
   });
 });

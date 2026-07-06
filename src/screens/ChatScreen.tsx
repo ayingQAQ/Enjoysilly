@@ -49,6 +49,7 @@ import {
 import {
   saveChatSnapshotToDatabase,
 } from "../services/chatPersistence";
+import { loadAppSettings, loadUserPersonas, selectDefaultPersona } from "../services/settingsStore";
 import { importChatToDatabase } from "../services/chatImport";
 import {
   deleteChatArchive,
@@ -58,7 +59,8 @@ import {
   type ChatArchiveSummary,
 } from "../services/chatArchive";
 import { createChatJsonlExport } from "../services/chatExport";
-import { listQuickReplySets, type StoredQuickReplySet } from "../lib/db";
+import { listQuickReplySets, getWorldInfo, type StoredQuickReplySet } from "../lib/db";
+import type { WorldInfoScanInputEntry } from "../lib/worldInfoScan";
 import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
 import {
   AssetSelectionSummary,
@@ -103,9 +105,11 @@ import {
   minimalPresetOptionId,
   normalizeName,
   appendQuickReplyToInput,
+  resolveDefaultWorldInfoEntries,
   selectChatCharacterPayload,
   selectChatMessageSwipeAt,
   selectChatPresetPayload,
+  selectVisibleQuickReplySets,
   updateChatMessageTextAt,
 } from "./chatScreenHelpers";
 
@@ -156,6 +160,12 @@ export function ChatScreen() {
   );
   const [presetDetailError, setPresetDetailError] = useState<string | null>(null);
   const [qrSets, setQrSets] = useState<StoredQuickReplySet[]>([]);
+  const [worldInfoEntries, setWorldInfoEntries] = useState<WorldInfoScanInputEntry[] | undefined>(
+    undefined,
+  );
+  const [defaultQuickReplySetId, setDefaultQuickReplySetId] = useState<string | undefined>(
+    undefined,
+  );
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -212,6 +222,10 @@ export function ChatScreen() {
   const activeRegexScripts = useMemo(
     () => extractRegexScripts(activePreset),
     [activePreset],
+  );
+  const visibleQrSets = useMemo(
+    () => selectVisibleQuickReplySets(qrSets, defaultQuickReplySetId),
+    [qrSets, defaultQuickReplySetId],
   );
   const estimatedTokenCount = useMemo(
     () => estimateChatMessagesTokens(messages),
@@ -282,6 +296,38 @@ export function ChatScreen() {
     listQuickReplySets()
       .then((list) => { if (active) setQrSets(list); })
       .catch(() => { if (active) setQrSets([]); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([loadAppSettings(), loadUserPersonas()])
+      .then(async ([settings, personas]) => {
+        if (!active) return;
+        const persona = selectDefaultPersona(personas);
+        setBaseUrl(settings.api.baseUrl);
+        setModel(settings.api.model);
+        if (settings.api.apiKey) setApiKey(settings.api.apiKey);
+        setUserName(persona.name);
+        if (persona.description) setPersonaDescription(persona.description);
+        if (settings.defaultPresetId) {
+          setSelectedPresetId(settings.defaultPresetId);
+        }
+        setDefaultQuickReplySetId(settings.defaultQuickReplySetId);
+        if (settings.defaultWorldId) {
+          try {
+            const world = await getWorldInfo(settings.defaultWorldId);
+            if (active) {
+              setWorldInfoEntries(
+                resolveDefaultWorldInfoEntries(settings.defaultWorldId, world ?? null),
+              );
+            }
+          } catch {
+            if (active) setWorldInfoEntries(undefined);
+          }
+        }
+      })
+      .catch(() => { /* settings unavailable, keep defaults */ });
     return () => { active = false; };
   }, []);
 
@@ -388,6 +434,7 @@ export function ChatScreen() {
           userName: normalizeName(userName, defaultUserName),
           userText,
           personaDescription,
+          worldInfoEntries,
           signal: controller.signal,
           regexScripts: activeRegexScripts,
         })) {
@@ -820,6 +867,7 @@ export function ChatScreen() {
           messages,
           userName: normalizeName(userName, defaultUserName),
           personaDescription,
+          worldInfoEntries,
           signal: controller.signal,
           regexScripts: activeRegexScripts,
         })) {
@@ -905,6 +953,7 @@ export function ChatScreen() {
         messages,
         userName: normalizeName(userName, defaultUserName),
         personaDescription,
+        worldInfoEntries,
         signal: controller.signal,
         regexScripts: activeRegexScripts,
       })) {
@@ -1205,9 +1254,9 @@ export function ChatScreen() {
               value={inputText}
               onChange={(event) => setInputText(event.target.value)}
             />
-            {qrSets.length > 0 ? (
+            {visibleQrSets.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {qrSets.flatMap((qrSet) =>
+                {visibleQrSets.flatMap((qrSet) =>
                   qrSet.payload.qrList.map((item, i) => (
                     <button
                       key={`${qrSet.id}-${i}`}
