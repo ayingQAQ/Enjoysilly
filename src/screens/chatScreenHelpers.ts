@@ -1,8 +1,11 @@
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { replaceMacros } from "../lib/macros";
 import { formatSillyTavernChatDate } from "../lib/chatTurn";
+import type { WorldInfoScanInputEntry } from "../lib/worldInfoScan";
 import type { SaveChatSnapshotToDatabaseInput } from "../services/chatPersistence";
 import type { ImportChatToDatabaseOptions } from "../services/chatImport";
+import type { StoredQuickReplySet, StoredWorldInfo } from "../lib/db";
+import type { NativeWorldInfoBook, PortableCharacterBook } from "../types/worldinfo";
 import type {
   ChatMessageLine,
   ChatMetadataLine,
@@ -379,6 +382,38 @@ function getCharacterNickname(character: CharacterCard): string | undefined {
   const nickname = character.data.nickname;
 
   return typeof nickname === "string" ? nickname : undefined;
+}
+
+export function extractWorldInfoEntries(
+  worldPayload: NativeWorldInfoBook | PortableCharacterBook,
+): WorldInfoScanInputEntry[] {
+  if (Array.isArray(worldPayload.entries)) {
+    return worldPayload.entries;
+  }
+
+  return Object.values(worldPayload.entries);
+}
+
+export function resolveDefaultWorldInfoEntries(
+  defaultWorldId: string | undefined,
+  worldInfo: StoredWorldInfo | null,
+): WorldInfoScanInputEntry[] | undefined {
+  if (!defaultWorldId || !worldInfo) return undefined;
+
+  const entries = extractWorldInfoEntries(worldInfo.payload);
+
+  return entries.length > 0 ? entries : undefined;
+}
+
+export function selectVisibleQuickReplySets(
+  allSets: StoredQuickReplySet[],
+  defaultQuickReplySetId: string | undefined,
+): StoredQuickReplySet[] {
+  if (!defaultQuickReplySetId) return allSets;
+
+  const defaultSet = allSets.find((set) => set.id === defaultQuickReplySetId);
+
+  return defaultSet ? [defaultSet] : allSets;
 }
 
 function updateChatMessageText(

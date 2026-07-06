@@ -9,6 +9,10 @@ import {
   type PresetAssetSummary,
 } from "../services/assetCatalog";
 import { saveChatSnapshotToDatabase } from "../services/chatPersistence";
+import { loadAppSettings, loadUserPersonas, selectDefaultPersona } from "../services/settingsStore";
+import { getWorldInfo } from "../lib/db";
+import type { WorldInfoScanInputEntry } from "../lib/worldInfoScan";
+import { resolveDefaultWorldInfoEntries } from "./chatScreenHelpers";
 import { extractRegexScripts } from "../lib/presetIO";
 import { normalizeGroupMembers, resolveNextGroupSpeaker } from "../lib/groupSpeaker";
 import { runStreamingChatTurn } from "../lib/chatStreaming";
@@ -46,6 +50,9 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
   const [lastSpeakerId, setLastSpeakerId] = useState<string | undefined>();
+  const [worldInfoEntries, setWorldInfoEntries] = useState<WorldInfoScanInputEntry[] | undefined>(
+    undefined,
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const fallbackPreset = useMemo(() => createMinimalChatPreset(), []);
@@ -105,6 +112,36 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
     return () => { active = false; };
   }, [selectedPresetId]);
 
+  useEffect(() => {
+    let active = true;
+    Promise.all([loadAppSettings(), loadUserPersonas()])
+      .then(async ([settings, personas]) => {
+        if (!active) return;
+        const persona = selectDefaultPersona(personas);
+        setBaseUrl(settings.api.baseUrl);
+        setModel(settings.api.model);
+        if (settings.api.apiKey) setApiKey(settings.api.apiKey);
+        setUserName(persona.name);
+        if (settings.defaultPresetId && !selectedPresetId) {
+          setSelectedPresetId(settings.defaultPresetId);
+        }
+        if (settings.defaultWorldId) {
+          try {
+            const world = await getWorldInfo(settings.defaultWorldId);
+            if (active) {
+              setWorldInfoEntries(
+                resolveDefaultWorldInfoEntries(settings.defaultWorldId, world ?? null),
+              );
+            }
+          } catch {
+            if (active) setWorldInfoEntries(undefined);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const speakerDetail = characterDetails.get(speakerId);
   const speakerCard = speakerDetail?.stored.payload;
   const canSend = !isStreaming && inputText.trim().length > 0 && speakerCard !== undefined && speakerId;
@@ -158,6 +195,7 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
         speakerCharacterId: speakerId,
         signal: controller.signal,
         regexScripts: activeRegexScripts,
+        worldInfoEntries,
       })) {
         setMessages(update.messages);
         if (update.kind === "started") setStatusText("已连接，等待首个 token");
