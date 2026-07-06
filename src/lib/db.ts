@@ -3,12 +3,13 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { CharacterCard } from "../types/character";
 import type { SillyTavernChatLog } from "../types/chat";
 import type { ChatCompletionPreset } from "../types/preset";
+import type { GroupConfig } from "../types/group";
 import type { QuickReplySet } from "../types/quickReply";
 import type { RegexScript } from "../types/preset";
 import type { NativeWorldInfoBook, PortableCharacterBook } from "../types/worldinfo";
 
 export const databaseName = "my_silly";
-export const databaseVersion = 3;
+export const databaseVersion = 4;
 
 export interface StoredEntity<TPayload> {
   id: string;
@@ -32,6 +33,7 @@ export type StoredRegexScript = StoredEntity<RegexScript> & {
   characterId?: string;
 };
 export type StoredQuickReplySet = StoredEntity<QuickReplySet>;
+export type StoredGroup = StoredEntity<GroupConfig>;
 
 export interface StoredSetting {
   key: string;
@@ -93,6 +95,14 @@ export interface MySillyDatabase extends DBSchema {
       "by-updatedAt": string;
     };
   };
+  groups: {
+    key: string;
+    value: StoredGroup;
+    indexes: {
+      "by-name": string;
+      "by-updatedAt": string;
+    };
+  };
 }
 
 export type MySillyDatabaseConnection = IDBPDatabase<MySillyDatabase>;
@@ -138,6 +148,12 @@ export function openMySillyDatabase(
         const qrStore = database.createObjectStore("quickReplies", { keyPath: "id" });
         qrStore.createIndex("by-name", "name");
         qrStore.createIndex("by-updatedAt", "updatedAt");
+      }
+
+      if (!database.objectStoreNames.contains("groups")) {
+        const groupStore = database.createObjectStore("groups", { keyPath: "id" });
+        groupStore.createIndex("by-name", "name");
+        groupStore.createIndex("by-updatedAt", "updatedAt");
       }
     },
   });
@@ -372,4 +388,35 @@ export async function deleteQuickReplySet(
 ): Promise<void> {
   const db = database ?? (await getMySillyDatabase());
   await db.delete("quickReplies", id);
+}
+
+export async function saveGroup(
+  group: StoredGroup,
+  database?: MySillyDatabaseConnection,
+): Promise<string> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.put("groups", group);
+}
+
+export async function getGroup(
+  id: string,
+  database?: MySillyDatabaseConnection,
+): Promise<StoredGroup | undefined> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.get("groups", id);
+}
+
+export async function listGroups(
+  database?: MySillyDatabaseConnection,
+): Promise<StoredGroup[]> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.getAll("groups");
+}
+
+export async function deleteGroup(
+  id: string,
+  database?: MySillyDatabaseConnection,
+): Promise<void> {
+  const db = database ?? (await getMySillyDatabase());
+  await db.delete("groups", id);
 }

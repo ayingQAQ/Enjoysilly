@@ -111,10 +111,22 @@ export function getChatArchiveFilterCharacterId(
     : selectedCharacterId;
 }
 
-export function createCharacterGreetingOptions(character: CharacterCard): string[] {
+export function createCharacterGreetingOptions(
+  character: CharacterCard,
+  options: { preferGroupOnly?: boolean } = {},
+): string[] {
   const data = character.data;
+  const groupOnlyGreetings =
+    "group_only_greetings" in data && Array.isArray(data.group_only_greetings)
+      ? data.group_only_greetings
+      : [];
+  const defaultGreetings = [data.first_mes, ...(data.alternate_greetings ?? [])];
+  const source =
+    options.preferGroupOnly && groupOnlyGreetings.length > 0
+      ? groupOnlyGreetings
+      : defaultGreetings;
 
-  return [data.first_mes, ...(data.alternate_greetings ?? [])]
+  return source
     .map((greeting) => greeting?.trim() ?? "")
     .filter((greeting) => greeting.length > 0);
 }
@@ -122,10 +134,13 @@ export function createCharacterGreetingOptions(character: CharacterCard): string
 export function createGreetingChatMessage(input: {
   character: CharacterCard;
   greetingIndex?: number;
+  preferGroupOnly?: boolean;
   now?: Date;
   userName: string;
 }): ChatMessageLine | null {
-  const greetings = createCharacterGreetingOptions(input.character);
+  const greetings = createCharacterGreetingOptions(input.character, {
+    preferGroupOnly: input.preferGroupOnly,
+  });
 
   if (greetings.length === 0) {
     return null;
