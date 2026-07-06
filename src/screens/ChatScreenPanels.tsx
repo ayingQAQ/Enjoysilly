@@ -232,10 +232,10 @@ export function AssetSelectionSummary({
       ? `角色：${characterDetail.name} · ${characterDetail.specVersion} · 世界书 ${
           characterDetail.embeddedBook?.entryCount ?? 0
         }`
-      : "角色：本地调试角色",
+      : "角色：默认角色",
     presetDetail
       ? `预设：${presetDetail.name} · prompt ${presetDetail.promptCount} · regex ${presetDetail.regexScriptCount}`
-      : "预设：最小 Chat Completion 预设",
+      : "预设：默认 Chat Completion 预设",
   ];
 
   return (

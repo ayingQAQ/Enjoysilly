@@ -16,13 +16,3 @@ export interface WorkspaceSection {
   description: string;
   icon: LucideIcon;
 }
-
-export interface DemoCharacter {
-  id: string;
-  name: string;
-  subtitle: string;
-  avatarUrl: string;
-  tags: string[];
-  lastMessage: string;
-  updatedAt: string;
-}

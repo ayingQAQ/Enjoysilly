@@ -9,7 +9,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import type { DemoCharacter, WorkspaceSection } from "../types/ui";
+import type { WorkspaceSection } from "../types/ui";
 
 export const workspaceSections: WorkspaceSection[] = [
   {
@@ -59,26 +59,5 @@ export const workspaceSections: WorkspaceSection[] = [
     label: "设置",
     description: "接口、Persona 与备份",
     icon: Settings,
-  },
-];
-
-export const demoCharacters: DemoCharacter[] = [
-  {
-    id: "honglou",
-    name: "红楼梦世界",
-    subtitle: "角色卡 V2 · 内嵌世界书 10 条",
-    avatarUrl: "/test-fixtures/红楼.png",
-    tags: ["古典", "世界书", "V2"],
-    lastMessage: "潇湘馆的竹影已写入世界书上下文。",
-    updatedAt: "刚刚",
-  },
-  {
-    id: "darkside",
-    name: "小猫之神预设",
-    subtitle: "Chat Completion · 50 prompts",
-    avatarUrl: "",
-    tags: ["预设", "Regex", "OpenAI"],
-    lastMessage: "正则脚本位于 extensions.regex_scripts。",
-    updatedAt: "样本",
   },
 ];

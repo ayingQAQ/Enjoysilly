@@ -11,7 +11,6 @@ import {
   Archive,
   Bot,
   Download,
-  KeyRound,
   Loader2,
   MessageSquare,
   Plus,
@@ -1095,7 +1094,7 @@ export function ChatScreen() {
   return (
     <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-5 py-6 lg:px-8">
       <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid gap-4 xl:grid-cols-[minmax(340px,1fr)_minmax(360px,0.85fr)] xl:items-end">
           <div className="min-w-0">
             <p className="mb-2 text-sm font-medium text-[var(--accent-strong)]">
               实时对话
@@ -1108,7 +1107,7 @@ export function ChatScreen() {
               也可以导入/导出 ST JSONL，并手动保存为兼容快照，不修改角色卡、世界书、预设或正则脚本 payload。
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
             <SummaryTile label="消息行" value={messages.length} />
             <SummaryTile label="Token 估算" value={`约 ${estimatedTokenCount}`} compact />
             <SummaryTile label="草稿" value={draftStatus} compact />
@@ -1119,7 +1118,7 @@ export function ChatScreen() {
 
       <div className="grid min-h-[640px] gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-h-0 flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--border-soft)] px-4 py-3">
+          <div className="flex flex-col gap-3 border-b border-[var(--border-soft)] px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
                 <MessageSquare size={18} />
@@ -1143,7 +1142,7 @@ export function ChatScreen() {
                 ) : null}
               </div>
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex min-w-0 flex-wrap gap-2">
               <input
                 ref={chatImportInputRef}
                 className="hidden"
@@ -1152,7 +1151,7 @@ export function ChatScreen() {
                 onChange={(event) => void handleChatImportFileChange(event)}
               />
               <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canImport}
                 type="button"
                 onClick={handlePickChatImportFile}
@@ -1165,7 +1164,7 @@ export function ChatScreen() {
                 导入
               </button>
               <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canExport}
                 type="button"
                 onClick={handleExport}
@@ -1174,7 +1173,7 @@ export function ChatScreen() {
                 导出
               </button>
               <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canContinue}
                 type="button"
                 onClick={() => void handleContinueMessage()}
@@ -1183,7 +1182,7 @@ export function ChatScreen() {
                 继续
               </button>
               <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canSave}
                 type="button"
                 onClick={() => void handleSave()}
@@ -1196,7 +1195,7 @@ export function ChatScreen() {
                 保存
               </button>
               <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isStreaming || isImportingChat}
                 type="button"
                 onClick={handleNewChat}
@@ -1309,27 +1308,16 @@ export function ChatScreen() {
 
         <aside className="flex min-h-0 flex-col gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
           <PanelTitle
-            icon={<KeyRound size={17} />}
-            title="接口配置"
-            subtitle="仅保存在当前页面状态，不写入本地数据库。"
+            icon={<UserRound size={17} />}
+            title="本次对话对象"
+            subtitle="选择本轮要使用的角色与 ST 原生预设；接口配置请在设置页管理。"
           />
-          <Field label="API Base URL" value={baseUrl} onChange={setBaseUrl} />
-          <Field label="API Key" type="password" value={apiKey} onChange={setApiKey} />
-          <Field label="模型" value={model} onChange={setModel} />
-
-          <div className="border-t border-[var(--border-soft)] pt-4">
-            <PanelTitle
-              icon={<UserRound size={17} />}
-              title="资产选择"
-              subtitle="读取已导入角色和 ST 原生预设；当前阶段只读使用，不保存绑定关系。"
-            />
-          </div>
           <SelectField
             disabled={isStreaming || isAssetLoading}
             label="角色"
             options={[
               {
-                label: "本地调试角色",
+                label: "默认角色",
                 value: localCharacterOptionId,
               },
               ...characters.map((characterAsset) => ({
@@ -1345,7 +1333,7 @@ export function ChatScreen() {
             label="预设"
             options={[
               {
-                label: "最小 Chat Completion 预设",
+                label: "默认 Chat Completion 预设",
                 value: minimalPresetOptionId,
               },
               ...presets.map((presetAsset) => ({
@@ -1405,8 +1393,8 @@ export function ChatScreen() {
           <div className="border-t border-[var(--border-soft)] pt-4">
             <PanelTitle
               icon={<Bot size={17} />}
-              title="调试输入"
-              subtitle="本地角色模式下可编辑；已导入角色会按原始 payload 只读使用。"
+              title="当前身份"
+              subtitle="未选择导入角色时，可在这里设置临时角色与用户 persona。"
             />
           </div>
           <Field label="用户名" value={userName} onChange={setUserName} />

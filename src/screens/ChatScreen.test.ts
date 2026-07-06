@@ -58,7 +58,7 @@ describe("ChatScreen helpers", () => {
 
     expect(character.spec).toBe("chara_card_v2");
     expect(character.spec_version).toBe("2.0");
-    expect(character.data.name).toBe("my_silly 助手");
+    expect(character.data.name).toBe("默认角色");
     expect(character.data.description).toBe("测试角色");
     expect(character.data.extensions).toEqual({});
   });
@@ -168,7 +168,7 @@ describe("ChatScreen helpers", () => {
     ).toEqual({
       messages,
       userName: "User",
-      characterName: "my_silly 助手",
+      characterName: "默认角色",
       characterId: undefined,
     });
   });

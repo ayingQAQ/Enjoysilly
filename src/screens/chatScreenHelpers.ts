@@ -19,11 +19,11 @@ export const minimalPresetOptionId = "__minimal_preset__";
 export const defaultBaseUrl = "https://api.openai.com/v1";
 export const defaultModel = "gpt-4.1-mini";
 export const defaultUserName = "User";
-export const defaultCharacterName = "my_silly 助手";
+export const defaultCharacterName = "默认角色";
 export const defaultCharacterDescription =
-  "你是 my_silly 的本地调试助手。回复应当清晰、简洁，并保持中文交流。";
+  "你正在进行角色扮演对话。请保持自然、清晰，并遵循角色设定。";
 export const defaultPersonaDescription =
-  "用户正在测试 my_silly 的 OpenAI 兼容实时对话链路。";
+  "";
 
 export function createLocalChatCharacter(input: {
   name?: string;
