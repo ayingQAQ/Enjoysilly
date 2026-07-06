@@ -3,11 +3,12 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { CharacterCard } from "../types/character";
 import type { SillyTavernChatLog } from "../types/chat";
 import type { ChatCompletionPreset } from "../types/preset";
+import type { QuickReplySet } from "../types/quickReply";
 import type { RegexScript } from "../types/preset";
 import type { NativeWorldInfoBook, PortableCharacterBook } from "../types/worldinfo";
 
 export const databaseName = "my_silly";
-export const databaseVersion = 2;
+export const databaseVersion = 3;
 
 export interface StoredEntity<TPayload> {
   id: string;
@@ -30,6 +31,7 @@ export type StoredChat = StoredEntity<SillyTavernChatLog> & {
 export type StoredRegexScript = StoredEntity<RegexScript> & {
   characterId?: string;
 };
+export type StoredQuickReplySet = StoredEntity<QuickReplySet>;
 
 export interface StoredSetting {
   key: string;
@@ -83,6 +85,14 @@ export interface MySillyDatabase extends DBSchema {
       "by-updatedAt": string;
     };
   };
+  quickReplies: {
+    key: string;
+    value: StoredQuickReplySet;
+    indexes: {
+      "by-name": string;
+      "by-updatedAt": string;
+    };
+  };
 }
 
 export type MySillyDatabaseConnection = IDBPDatabase<MySillyDatabase>;
@@ -122,6 +132,12 @@ export function openMySillyDatabase(
         regexStore.createIndex("by-name", "name");
         regexStore.createIndex("by-characterId", "characterId");
         regexStore.createIndex("by-updatedAt", "updatedAt");
+      }
+
+      if (!database.objectStoreNames.contains("quickReplies")) {
+        const qrStore = database.createObjectStore("quickReplies", { keyPath: "id" });
+        qrStore.createIndex("by-name", "name");
+        qrStore.createIndex("by-updatedAt", "updatedAt");
       }
     },
   });
@@ -325,4 +341,35 @@ export async function deleteRegexScript(
 ): Promise<void> {
   const db = database ?? (await getMySillyDatabase());
   await db.delete("regexScripts", id);
+}
+
+export async function saveQuickReplySet(
+  set: StoredQuickReplySet,
+  database?: MySillyDatabaseConnection,
+): Promise<string> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.put("quickReplies", set);
+}
+
+export async function getQuickReplySet(
+  id: string,
+  database?: MySillyDatabaseConnection,
+): Promise<StoredQuickReplySet | undefined> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.get("quickReplies", id);
+}
+
+export async function listQuickReplySets(
+  database?: MySillyDatabaseConnection,
+): Promise<StoredQuickReplySet[]> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.getAll("quickReplies");
+}
+
+export async function deleteQuickReplySet(
+  id: string,
+  database?: MySillyDatabaseConnection,
+): Promise<void> {
+  const db = database ?? (await getMySillyDatabase());
+  await db.delete("quickReplies", id);
 }

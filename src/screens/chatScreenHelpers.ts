@@ -216,6 +216,21 @@ export function createChatDraftStatus(input: {
   return "未保存草稿";
 }
 
+export function appendQuickReplyToInput(
+  currentText: string,
+  quickReplyText: string,
+): string {
+  if (quickReplyText.length === 0) {
+    return currentText;
+  }
+
+  if (currentText.length === 0 || /\s$/u.test(currentText)) {
+    return `${currentText}${quickReplyText}`;
+  }
+
+  return `${currentText}\n${quickReplyText}`;
+}
+
 export function createChatSaveSnapshotInput(input: {
   activeCharacter: CharacterCard;
   chatMetadata?: ChatMetadataLine;

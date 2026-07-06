@@ -58,6 +58,7 @@ import {
   type ChatArchiveSummary,
 } from "../services/chatArchive";
 import { createChatJsonlExport } from "../services/chatExport";
+import { listQuickReplySets, type StoredQuickReplySet } from "../lib/db";
 import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
 import {
   AssetSelectionSummary,
@@ -101,6 +102,7 @@ import {
   localCharacterOptionId,
   minimalPresetOptionId,
   normalizeName,
+  appendQuickReplyToInput,
   selectChatCharacterPayload,
   selectChatMessageSwipeAt,
   selectChatPresetPayload,
@@ -153,6 +155,7 @@ export function ChatScreen() {
     null,
   );
   const [presetDetailError, setPresetDetailError] = useState<string | null>(null);
+  const [qrSets, setQrSets] = useState<StoredQuickReplySet[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -273,6 +276,14 @@ export function ChatScreen() {
   useEffect(() => {
     void refreshChatArchives();
   }, [refreshChatArchives]);
+
+  useEffect(() => {
+    let active = true;
+    listQuickReplySets()
+      .then((list) => { if (active) setQrSets(list); })
+      .catch(() => { if (active) setQrSets([]); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (selectedCharacterId === localCharacterOptionId) {
@@ -1194,6 +1205,27 @@ export function ChatScreen() {
               value={inputText}
               onChange={(event) => setInputText(event.target.value)}
             />
+            {qrSets.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {qrSets.flatMap((qrSet) =>
+                  qrSet.payload.qrList.map((item, i) => (
+                    <button
+                      key={`${qrSet.id}-${i}`}
+                      className="rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:opacity-60"
+                      disabled={isStreaming}
+                      type="button"
+                      onClick={() =>
+                        setInputText((prev) =>
+                          appendQuickReplyToInput(prev, item.message),
+                        )
+                      }
+                    >
+                      {item.label}
+                    </button>
+                  )),
+                )}
+              </div>
+            ) : null}
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p aria-live="polite" className="text-xs text-[var(--text-muted)]">
                 {statusText}
