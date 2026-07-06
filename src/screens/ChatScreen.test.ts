@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  appendQuickReplyToInput,
   createCharacterGreetingOptions,
   createChatDraftStatus,
   createGreetingChatMessage,
@@ -37,6 +38,13 @@ describe("ChatScreen helpers", () => {
       { identifier: "chatHistory", enabled: true },
     ]);
     expect(preset.extensions).toBeUndefined();
+  });
+
+  it("appends quick reply text to input without merging separate replies", () => {
+    expect(appendQuickReplyToInput("", "你好")).toBe("你好");
+    expect(appendQuickReplyToInput("你好", "再见")).toBe("你好\n再见");
+    expect(appendQuickReplyToInput("你好\n", "再见")).toBe("你好\n再见");
+    expect(appendQuickReplyToInput("你好", "")).toBe("你好");
   });
 
   it("normalizes the local debug character without adding external payload fields", () => {

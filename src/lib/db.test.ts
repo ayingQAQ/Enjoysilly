@@ -7,16 +7,19 @@ import {
   deleteChat,
   deleteCharacter,
   deletePreset,
+  deleteQuickReplySet,
   deleteRegexScript,
   deleteWorldInfo,
   getChat,
   getCharacter,
   getPreset,
+  getQuickReplySet,
   getRegexScript,
   getSetting,
   getWorldInfo,
   listChatsByCharacterId,
   listPresets,
+  listQuickReplySets,
   listRegexScripts,
   listRegexScriptsByCharacterId,
   listWorlds,
@@ -25,6 +28,7 @@ import {
   saveChat,
   saveCharacter,
   savePreset,
+  saveQuickReplySet,
   saveRegexScript,
   saveSetting,
   saveWorldInfo,
@@ -33,6 +37,7 @@ import type {
   StoredCharacter,
   StoredChat,
   StoredPreset,
+  StoredQuickReplySet,
   StoredRegexScript,
   StoredWorldInfo,
 } from "./db";
@@ -59,6 +64,7 @@ describe("IndexedDB schema", () => {
       "characters",
       "chats",
       "presets",
+      "quickReplies",
       "regexScripts",
       "settings",
       "worlds",
@@ -423,6 +429,10 @@ describe("IndexedDB schema", () => {
     expect(Array.from(upgradedDatabase.objectStoreNames)).toContain(
       "regexScripts",
     );
+
+    expect(Array.from(upgradedDatabase.objectStoreNames)).toContain(
+      "quickReplies",
+    );
     await expect(getCharacter("char-v1", upgradedDatabase)).resolves.toEqual(
       expect.objectContaining({
         id: "char-v1",
@@ -431,5 +441,81 @@ describe("IndexedDB schema", () => {
     );
 
     upgradedDatabase.close();
+  });
+
+  it("upgrades an existing v2 database to v3 without deleting regex data", async () => {
+    const databaseName = createTestDatabaseName();
+    const now = "2026-07-06T16:30:00.000Z";
+    const v2Database = await openDB(databaseName, 2, {
+      upgrade(database) {
+        const characterStore = database.createObjectStore("characters", {
+          keyPath: "id",
+        });
+        characterStore.createIndex("by-name", "name");
+        characterStore.createIndex("by-updatedAt", "updatedAt");
+        const regexStore = database.createObjectStore("regexScripts", {
+          keyPath: "id",
+        });
+        regexStore.createIndex("by-name", "name");
+        regexStore.createIndex("by-characterId", "characterId");
+        regexStore.createIndex("by-updatedAt", "updatedAt");
+      },
+    });
+
+    await v2Database.put("regexScripts", {
+      id: "regex-v2",
+      name: "旧库正则",
+      createdAt: now,
+      updatedAt: now,
+      payload: {
+        scriptName: "旧库正则",
+        findRegex: "hello",
+        replaceString: "world",
+      },
+    });
+    v2Database.close();
+
+    const upgradedDatabase = await openMySillyDatabase(databaseName);
+
+    expect(Array.from(upgradedDatabase.objectStoreNames)).toContain(
+      "quickReplies",
+    );
+    await expect(getRegexScript("regex-v2", upgradedDatabase)).resolves.toEqual(
+      expect.objectContaining({
+        id: "regex-v2",
+        name: "旧库正则",
+      }),
+    );
+
+    upgradedDatabase.close();
+  });
+
+  it("saves, lists, and deletes quick reply sets", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = "2026-07-06T16:00:00.000Z";
+    const qrSet: StoredQuickReplySet = {
+      id: "qr-1",
+      name: "测试快捷回复",
+      createdAt: now,
+      updatedAt: now,
+      payload: {
+        name: "测试集",
+        version: 2,
+        qrList: [
+          { label: "打招呼", message: "你好！" },
+          { label: "再见", message: "拜拜", isAuto: true },
+        ],
+      },
+    };
+
+    await saveQuickReplySet(qrSet, database);
+
+    await expect(getQuickReplySet("qr-1", database)).resolves.toEqual(qrSet);
+    await expect(listQuickReplySets(database)).resolves.toEqual([qrSet]);
+
+    await deleteQuickReplySet("qr-1", database);
+    await expect(getQuickReplySet("qr-1", database)).resolves.toBeUndefined();
+
+    database.close();
   });
 });
