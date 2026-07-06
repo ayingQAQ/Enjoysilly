@@ -3,6 +3,7 @@ import { RightPanel } from "./components/RightPanel";
 import { workspaceSections } from "./data/workspace";
 import { CharactersScreen } from "./screens/CharactersScreen";
 import { ChatScreen } from "./screens/ChatScreen";
+import { GroupsScreen } from "./screens/GroupsScreen";
 import { PlaceholderScreen } from "./screens/PlaceholderScreen";
 import { PresetsScreen } from "./screens/PresetsScreen";
 import { QuickReplyScreen } from "./screens/QuickReplyScreen";
@@ -21,12 +22,14 @@ export function App() {
       {activeSection === "presets" ? <PresetsScreen /> : null}
       {activeSection === "regex" ? <RegexScreen /> : null}
       {activeSection === "quickReplies" ? <QuickReplyScreen /> : null}
+      {activeSection === "groups" ? <GroupsScreen /> : null}
       {activeSection === "chat" ? <ChatScreen /> : null}
       {activeSection !== "characters" &&
       activeSection !== "worlds" &&
       activeSection !== "presets" &&
       activeSection !== "regex" &&
       activeSection !== "quickReplies" &&
+      activeSection !== "groups" &&
       activeSection !== "chat" &&
       activeMeta ? (
         <PlaceholderScreen section={activeMeta} />

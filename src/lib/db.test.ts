@@ -6,18 +6,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   deleteChat,
   deleteCharacter,
+  deleteGroup,
   deletePreset,
   deleteQuickReplySet,
   deleteRegexScript,
   deleteWorldInfo,
   getChat,
   getCharacter,
+  getGroup,
   getPreset,
   getQuickReplySet,
   getRegexScript,
   getSetting,
   getWorldInfo,
   listChatsByCharacterId,
+  listGroups,
   listPresets,
   listQuickReplySets,
   listRegexScripts,
@@ -27,6 +30,7 @@ import {
   resetDatabaseConnectionForTests,
   saveChat,
   saveCharacter,
+  saveGroup,
   savePreset,
   saveQuickReplySet,
   saveRegexScript,
@@ -36,6 +40,7 @@ import {
 import type {
   StoredCharacter,
   StoredChat,
+  StoredGroup,
   StoredPreset,
   StoredQuickReplySet,
   StoredRegexScript,
@@ -63,6 +68,7 @@ describe("IndexedDB schema", () => {
     expect(Array.from(database.objectStoreNames)).toEqual([
       "characters",
       "chats",
+      "groups",
       "presets",
       "quickReplies",
       "regexScripts",
@@ -517,5 +523,113 @@ describe("IndexedDB schema", () => {
     await expect(getQuickReplySet("qr-1", database)).resolves.toBeUndefined();
 
     database.close();
+  });
+
+  it("saves, lists, and deletes group records", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = "2026-07-06T17:00:00.000Z";
+    const group: StoredGroup = {
+      id: "group-1",
+      name: "测试群组",
+      createdAt: now,
+      updatedAt: now,
+      payload: {
+        name: "测试群",
+        members: [
+          { characterId: "char-1", displayName: "Alice", enabled: true, order: 0 },
+          { characterId: "char-2", displayName: "Bob", enabled: true, order: 1 },
+        ],
+        speakerStrategy: "listOrder",
+      },
+    };
+
+    await saveGroup(group, database);
+    await expect(getGroup("group-1", database)).resolves.toEqual(group);
+    await expect(listGroups(database)).resolves.toEqual([group]);
+
+    await deleteGroup("group-1", database);
+    await expect(getGroup("group-1", database)).resolves.toBeUndefined();
+
+    database.close();
+  });
+
+  it("deletes group without cascading to characters or chats", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = "2026-07-06T17:10:00.000Z";
+
+    await saveCharacter({
+      id: "char-grp",
+      name: "群成员角色",
+      createdAt: now,
+      updatedAt: now,
+      payload: { spec: "chara_card_v2", spec_version: "2.0", data: { name: "群成员角色" } },
+    }, database);
+    await saveGroup({
+      id: "group-x",
+      name: "待删群组",
+      createdAt: now,
+      updatedAt: now,
+      payload: {
+        name: "待删群组",
+        members: [{ characterId: "char-grp", enabled: true, order: 0 }],
+        speakerStrategy: "listOrder",
+      },
+    }, database);
+    await saveChat({
+      id: "chat-grp",
+      name: "群聊存档",
+      groupId: "group-x",
+      createdAt: now,
+      updatedAt: now,
+      payload: { metadata: {}, messages: [] },
+    }, database);
+
+    await deleteGroup("group-x", database);
+    await expect(getGroup("group-x", database)).resolves.toBeUndefined();
+    await expect(getCharacter("char-grp", database)).resolves.toBeDefined();
+    await expect(getChat("chat-grp", database)).resolves.toBeDefined();
+
+    database.close();
+  });
+
+  it("upgrades an existing v3 database to v4 without deleting stored data", async () => {
+    const databaseName = createTestDatabaseName();
+    const now = "2026-07-06T17:20:00.000Z";
+    const v3Database = await openDB(databaseName, 3, {
+      upgrade(database) {
+        const charStore = database.createObjectStore("characters", { keyPath: "id" });
+        charStore.createIndex("by-name", "name");
+        charStore.createIndex("by-updatedAt", "updatedAt");
+        const qrStore = database.createObjectStore("quickReplies", { keyPath: "id" });
+        qrStore.createIndex("by-name", "name");
+        qrStore.createIndex("by-updatedAt", "updatedAt");
+      },
+    });
+
+    await v3Database.put("characters", {
+      id: "char-v3",
+      name: "旧库角色",
+      createdAt: now,
+      updatedAt: now,
+      payload: { spec: "chara_card_v2", spec_version: "2.0", data: { name: "旧库角色" } },
+    });
+    await v3Database.put("quickReplies", {
+      id: "qr-v3",
+      name: "旧库QR",
+      createdAt: now,
+      updatedAt: now,
+      payload: { name: "旧库QR", qrList: [] },
+    });
+    v3Database.close();
+
+    const upgradedDatabase = await openMySillyDatabase(databaseName);
+    expect(Array.from(upgradedDatabase.objectStoreNames)).toContain("groups");
+    await expect(getCharacter("char-v3", upgradedDatabase)).resolves.toEqual(
+      expect.objectContaining({ id: "char-v3", name: "旧库角色" }),
+    );
+    await expect(getQuickReplySet("qr-v3", upgradedDatabase)).resolves.toEqual(
+      expect.objectContaining({ id: "qr-v3", name: "旧库QR" }),
+    );
+    upgradedDatabase.close();
   });
 });

@@ -20,6 +20,11 @@ export interface ChatCompletionMessage {
   content: string;
 }
 
+export interface PromptBuilderGroupMember {
+  characterId: string;
+  name: string;
+}
+
 export interface PromptBuilderInput {
   preset: ChatCompletionPreset;
   character: CharacterCard;
@@ -36,7 +41,11 @@ export interface PromptBuilderInput {
     MacroReplacementContext,
     "characterName" | "nickname" | "userName"
   >;
+  groupMembers?: PromptBuilderGroupMember[];
   regexScripts?: RegexScriptLike[];
+  groupMemberNames?: string[];
+  speakerCharacterId?: string;
+  groupName?: string;
 }
 
 const defaultPromptOrderCharacterId = 100001;
@@ -71,7 +80,66 @@ export function buildChatCompletionMessages(
     ];
   });
 
-  return applyRegexScriptsToMessages(messages, context);
+  const processed = applyRegexScriptsToMessages(messages, context);
+
+  return prependGroupContext(processed, context);
+}
+
+function prependGroupContext(
+  messages: ChatCompletionMessage[],
+  context: PromptBuilderContext,
+): ChatCompletionMessage[] {
+  const { input } = context;
+  const groupMembers = createGroupPromptMembers(input);
+
+  if (groupMembers.length < 2) {
+    return messages;
+  }
+
+  const speakerCharacterId = input.speakerCharacterId;
+  const speakerName = input.character.data.name;
+  const others = groupMembers
+    .filter((member) =>
+      speakerCharacterId
+        ? member.characterId !== speakerCharacterId
+        : member.name !== speakerName,
+    )
+    .map((member) => member.name);
+
+  if (others.length === 0) {
+    return messages;
+  }
+
+  const groupLabel = input.groupName ?? "群组";
+  const contextLine = `[${groupLabel}成员：${others.join("、")}]`;
+
+  const contextMessage: ChatCompletionMessage = {
+    role: "system",
+    content: contextLine,
+  };
+
+  return [contextMessage, ...messages];
+}
+
+function createGroupPromptMembers(
+  input: PromptBuilderInput,
+): PromptBuilderGroupMember[] {
+  if (input.groupMembers) {
+    return input.groupMembers
+      .map((member) => ({
+        characterId: member.characterId.trim(),
+        name: member.name.trim(),
+      }))
+      .filter((member) => member.characterId.length > 0 && member.name.length > 0);
+  }
+
+  return (input.groupMemberNames ?? [])
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+    .map((name) => ({
+      characterId: name,
+      name,
+    }));
 }
 
 function createPromptBuilderContext(

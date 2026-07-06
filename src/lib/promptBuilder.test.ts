@@ -430,4 +430,63 @@ describe("prompt builder", () => {
     expect(messages.length).toBeGreaterThan(0);
     expect(JSON.stringify(preset.extensions)).toContain("regex_scripts");
   });
+
+  it("prepends group context system message with other member names", () => {
+    const messages = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter({ name: "Alice" }),
+      userName: "Tester",
+      groupMemberNames: ["Alice", "Bob", "Charlie"],
+      groupName: "测试群",
+    });
+
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0].role).toBe("system");
+    expect(messages[0].content).toBe("[测试群成员：Bob、Charlie]");
+  });
+
+  it("does not prepend group context when there is only one member", () => {
+    const withoutGroup = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter({ name: "Alice" }),
+      userName: "Tester",
+    });
+
+    const withOneMember = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter({ name: "Alice" }),
+      userName: "Tester",
+      groupMemberNames: ["Alice"],
+    });
+
+    expect(withOneMember.length).toBe(withoutGroup.length);
+  });
+
+  it("uses default group label when groupName is omitted", () => {
+    const messages = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter({ name: "Alice" }),
+      userName: "Tester",
+      groupMemberNames: ["Alice", "Bob"],
+    });
+
+    expect(messages[0].content).toBe("[群组成员：Bob]");
+  });
+
+  it("uses character ids to exclude only the active speaker in group context", () => {
+    const messages = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter({ name: "Alice" }),
+      userName: "Tester",
+      groupName: "同名群",
+      speakerCharacterId: "char-a",
+      groupMembers: [
+        { characterId: "char-a", name: "Alice" },
+        { characterId: "char-b", name: "Alice" },
+        { characterId: "char-c", name: "Charlie" },
+      ],
+    });
+
+    expect(messages[0].content).toBe("[同名群成员：Alice、Charlie]");
+  });
 });

@@ -135,6 +135,27 @@ describe("chat runtime request preparation", () => {
     );
   });
 
+  it("passes group context into prompt messages", () => {
+    const prepared = prepareChatCompletionRequest({
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+      speakerCharacterId: "char-a",
+      groupName: "测试群",
+      groupMembers: [
+        { characterId: "char-a", name: "Alice" },
+        { characterId: "char-b", name: "Bob" },
+      ],
+    });
+
+    expect(prepared.messages[0]).toEqual({
+      role: "system",
+      content: "[测试群成员：Bob]",
+    });
+    expect(prepared.requestBody.messages[0]).toEqual(prepared.messages[0]);
+  });
+
   it("scans world info once and injects before, after, and at-depth content", () => {
     const worldInfoEntries: NativeWorldInfoEntry[] = [
       {

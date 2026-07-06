@@ -190,6 +190,20 @@ describe("ChatScreen helpers", () => {
     ]);
   });
 
+  it("prefers V3 group-only greetings when requested", () => {
+    const character = createLocalChatCharacter({
+      name: "群聊角色",
+      description: "imported",
+    });
+
+    character.data.first_mes = "普通问候";
+    character.data.group_only_greetings = ["", "  群聊问候  "];
+
+    expect(createCharacterGreetingOptions(character, { preferGroupOnly: true })).toEqual([
+      "群聊问候",
+    ]);
+  });
+
   it("creates a ST-compatible greeting message with swipes and macro replacement", () => {
     const character = createLocalChatCharacter({
       name: "  林黛玉  ",

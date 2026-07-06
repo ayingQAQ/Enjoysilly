@@ -29,6 +29,7 @@ export interface ChatArchiveSummary {
 
 export interface LoadChatArchiveSummariesOptions {
   characterId?: string;
+  groupId?: string;
   database?: MySillyDatabaseConnection;
 }
 
@@ -48,9 +49,13 @@ export async function loadChatArchiveSummaries(
   options: LoadChatArchiveSummariesOptions = {},
 ): Promise<ChatArchiveSummary[]> {
   const database = options.database ?? (await getMySillyDatabase());
-  const chats = options.characterId
+  let chats = options.characterId
     ? await listChatsByCharacterId(options.characterId, database)
     : await listChats(database);
+
+  if (options.groupId) {
+    chats = chats.filter((chat) => chat.groupId === options.groupId);
+  }
 
   return chats
     .map(createChatArchiveSummary)

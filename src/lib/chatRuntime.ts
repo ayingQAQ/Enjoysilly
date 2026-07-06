@@ -33,6 +33,9 @@ export interface PrepareChatCompletionRequestInput {
   includeSystemMessages?: boolean;
   promptOrderCharacterId?: number;
   macroContext?: PromptBuilderInput["macroContext"];
+  groupMembers?: PromptBuilderInput["groupMembers"];
+  groupName?: string;
+  speakerCharacterId?: string;
   stream?: boolean;
   requestExtra?: Record<string, unknown>;
 }
@@ -64,6 +67,9 @@ export function prepareChatCompletionRequest(
     worldInfoAfter: formatScannedWorldInfo(worldInfoScanResult?.after),
     promptOrderCharacterId: input.promptOrderCharacterId,
     macroContext: input.macroContext,
+    groupMembers: input.groupMembers,
+    groupName: input.groupName,
+    speakerCharacterId: input.speakerCharacterId,
     regexScripts: extractRegexScripts(input.preset),
   });
   const requestBody = createChatCompletionRequestBody({
