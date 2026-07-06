@@ -6,6 +6,7 @@ import {
   type OpenAICompatibleChatCompletionRequestBody,
 } from "./api";
 import { buildChatHistoryText, getChatMessageDisplayText } from "./chatHistory";
+import { extractRegexScripts } from "./presetIO";
 import {
   buildChatCompletionMessages,
   type ChatCompletionMessage,
@@ -63,6 +64,7 @@ export function prepareChatCompletionRequest(
     worldInfoAfter: formatScannedWorldInfo(worldInfoScanResult?.after),
     promptOrderCharacterId: input.promptOrderCharacterId,
     macroContext: input.macroContext,
+    regexScripts: extractRegexScripts(input.preset),
   });
   const requestBody = createChatCompletionRequestBody({
     model: input.model,

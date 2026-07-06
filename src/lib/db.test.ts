@@ -1,30 +1,41 @@
 import "fake-indexeddb/auto";
 
-import { deleteDB } from "idb";
+import { deleteDB, openDB } from "idb";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   deleteChat,
   deleteCharacter,
   deletePreset,
+  deleteRegexScript,
   deleteWorldInfo,
   getChat,
   getCharacter,
   getPreset,
+  getRegexScript,
   getSetting,
   getWorldInfo,
   listChatsByCharacterId,
   listPresets,
+  listRegexScripts,
+  listRegexScriptsByCharacterId,
   listWorlds,
   openMySillyDatabase,
   resetDatabaseConnectionForTests,
   saveChat,
   saveCharacter,
   savePreset,
+  saveRegexScript,
   saveSetting,
   saveWorldInfo,
 } from "./db";
-import type { StoredCharacter, StoredChat, StoredPreset, StoredWorldInfo } from "./db";
+import type {
+  StoredCharacter,
+  StoredChat,
+  StoredPreset,
+  StoredRegexScript,
+  StoredWorldInfo,
+} from "./db";
 
 const testDatabaseNames: string[] = [];
 
@@ -48,6 +59,7 @@ describe("IndexedDB schema", () => {
       "characters",
       "chats",
       "presets",
+      "regexScripts",
       "settings",
       "worlds",
     ]);
@@ -343,5 +355,81 @@ describe("IndexedDB schema", () => {
     await expect(getSetting("api", database)).resolves.toBeDefined();
 
     database.close();
+  });
+
+  it("saves, lists by character, and deletes regex script records", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = "2026-07-06T15:00:00.000Z";
+    const script: StoredRegexScript = {
+      id: "regex-1",
+      name: "测试正则",
+      createdAt: now,
+      updatedAt: now,
+      characterId: "char-1",
+      payload: {
+        id: "s1",
+        scriptName: "测试正则",
+        findRegex: "hello",
+        replaceString: "world",
+        placement: [1, 2],
+        disabled: false,
+      },
+    };
+
+    await saveRegexScript(script, database);
+
+    await expect(getRegexScript("regex-1", database)).resolves.toEqual(script);
+    await expect(listRegexScripts(database)).resolves.toEqual([script]);
+    await expect(listRegexScriptsByCharacterId("char-1", database)).resolves.toEqual([script]);
+    await expect(listRegexScriptsByCharacterId("char-other", database)).resolves.toEqual([]);
+
+    await deleteRegexScript("regex-1", database);
+    await expect(getRegexScript("regex-1", database)).resolves.toBeUndefined();
+
+    database.close();
+  });
+
+  it("upgrades an existing v1 database without deleting stored data", async () => {
+    const databaseName = createTestDatabaseName();
+    const now = "2026-07-06T16:00:00.000Z";
+    const v1Database = await openDB(databaseName, 1, {
+      upgrade(database) {
+        const characterStore = database.createObjectStore("characters", {
+          keyPath: "id",
+        });
+        characterStore.createIndex("by-name", "name");
+        characterStore.createIndex("by-updatedAt", "updatedAt");
+        database.createObjectStore("settings", { keyPath: "key" });
+      },
+    });
+
+    await v1Database.put("characters", {
+      id: "char-v1",
+      name: "旧库角色",
+      createdAt: now,
+      updatedAt: now,
+      payload: {
+        spec: "chara_card_v2",
+        spec_version: "2.0",
+        data: {
+          name: "旧库角色",
+        },
+      },
+    });
+    v1Database.close();
+
+    const upgradedDatabase = await openMySillyDatabase(databaseName);
+
+    expect(Array.from(upgradedDatabase.objectStoreNames)).toContain(
+      "regexScripts",
+    );
+    await expect(getCharacter("char-v1", upgradedDatabase)).resolves.toEqual(
+      expect.objectContaining({
+        id: "char-v1",
+        name: "旧库角色",
+      }),
+    );
+
+    upgradedDatabase.close();
   });
 });

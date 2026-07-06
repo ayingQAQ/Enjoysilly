@@ -283,4 +283,151 @@ describe("prompt builder", () => {
       .toBe(true);
     expect(JSON.stringify(preset.extensions)).toContain("regex_scripts");
   });
+
+  it("applies regexScripts to assembled message contents", () => {
+    const messages = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+      personaDescription: "Tester likes concise answers.",
+      chatHistory: "Tester: Hi\nAlice: Hello",
+      regexScripts: [
+        {
+          findRegex: "Tester",
+          replaceString: "User",
+          placement: [5],
+          promptOnly: true,
+        },
+        {
+          findRegex: "careful",
+          replaceString: "meticulous",
+          placement: [5],
+          promptOnly: true,
+        },
+      ],
+    });
+
+    expect(messages).toEqual([
+      { role: "system", content: "You are Alice talking to User." },
+      { role: "system", content: "A meticulous archivist." },
+      { role: "system", content: "User likes concise answers." },
+      { role: "user", content: "User: Hi\nAlice: Hello" },
+    ]);
+  });
+
+  it("skips disabled regex scripts during prompt building", () => {
+    const messages = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+      regexScripts: [
+        {
+          findRegex: "Tester",
+          replaceString: "User",
+          disabled: true,
+          placement: [5],
+          promptOnly: true,
+        },
+        {
+          findRegex: "Alice",
+          replaceString: "Bob",
+          placement: [5],
+          promptOnly: true,
+        },
+      ],
+    });
+
+    expect(messages[0].content).toBe("You are Bob talking to Tester.");
+  });
+
+  it("does not apply user, AI output, or markdown-only regex scripts to prompt messages", () => {
+    const messages = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+      personaDescription: "Tester likes concise answers.",
+      chatHistory: "Tester: Hi\nAlice: Hello",
+      regexScripts: [
+        {
+          findRegex: "Tester",
+          replaceString: "User",
+          placement: [1],
+        },
+        {
+          findRegex: "Alice",
+          replaceString: "Bot",
+          placement: [2],
+        },
+        {
+          findRegex: "careful",
+          replaceString: "visible-only",
+          markdownOnly: true,
+          placement: [5],
+          promptOnly: true,
+        },
+      ],
+    });
+
+    expect(messages).toEqual([
+      { role: "system", content: "You are Alice talking to Tester." },
+      { role: "system", content: "A careful archivist." },
+      { role: "system", content: "Tester likes concise answers." },
+      { role: "user", content: "Tester: Hi\nAlice: Hello" },
+    ]);
+  });
+
+  it("returns unchanged messages when regexScripts is empty", () => {
+    const messagesWithoutRegex = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+    });
+
+    const messagesWithEmpty = buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+      regexScripts: [],
+    });
+
+    expect(messagesWithEmpty).toEqual(messagesWithoutRegex);
+  });
+
+  it("preserves source regexScripts immutability", () => {
+    const scripts = [
+      { findRegex: "Tester", replaceString: "User" },
+    ];
+    const originalScripts = structuredClone(scripts);
+
+    buildChatCompletionMessages({
+      preset: createPreset(),
+      character: createCharacter(),
+      userName: "Tester",
+      regexScripts: scripts,
+    });
+
+    expect(scripts).toEqual(originalScripts);
+  });
+
+  it("applies real fixture regex scripts from preset extensions to prompt messages", () => {
+    const preset = loadRealPresetFixture();
+    const character = loadRealCharacterFixture();
+
+    const messages = buildChatCompletionMessages({
+      preset,
+      character,
+      userName: "User",
+      personaDescription: "A fixture persona.",
+      chatHistory: "User: Hello",
+      worldInfoBefore: "Before world info.",
+      worldInfoAfter: "After world info.",
+      regexScripts: preset.extensions?.regex_scripts?.filter(
+        (script): script is typeof preset.extensions.regex_scripts[number] =>
+          typeof script === "object" && script !== null && script.disabled !== true,
+      ) ?? [],
+    });
+
+    expect(messages.length).toBeGreaterThan(0);
+    expect(JSON.stringify(preset.extensions)).toContain("regex_scripts");
+  });
 });

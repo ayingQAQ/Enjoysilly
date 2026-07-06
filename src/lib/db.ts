@@ -3,10 +3,11 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { CharacterCard } from "../types/character";
 import type { SillyTavernChatLog } from "../types/chat";
 import type { ChatCompletionPreset } from "../types/preset";
+import type { RegexScript } from "../types/preset";
 import type { NativeWorldInfoBook, PortableCharacterBook } from "../types/worldinfo";
 
 export const databaseName = "my_silly";
-export const databaseVersion = 1;
+export const databaseVersion = 2;
 
 export interface StoredEntity<TPayload> {
   id: string;
@@ -25,6 +26,9 @@ export type StoredWorldInfo = StoredEntity<NativeWorldInfoBook | PortableCharact
 export type StoredChat = StoredEntity<SillyTavernChatLog> & {
   characterId?: string;
   groupId?: string;
+};
+export type StoredRegexScript = StoredEntity<RegexScript> & {
+  characterId?: string;
 };
 
 export interface StoredSetting {
@@ -70,6 +74,15 @@ export interface MySillyDatabase extends DBSchema {
     key: string;
     value: StoredSetting;
   };
+  regexScripts: {
+    key: string;
+    value: StoredRegexScript;
+    indexes: {
+      "by-name": string;
+      "by-characterId": string;
+      "by-updatedAt": string;
+    };
+  };
 }
 
 export type MySillyDatabaseConnection = IDBPDatabase<MySillyDatabase>;
@@ -102,6 +115,13 @@ export function openMySillyDatabase(
 
       if (!database.objectStoreNames.contains("settings")) {
         database.createObjectStore("settings", { keyPath: "key" });
+      }
+
+      if (!database.objectStoreNames.contains("regexScripts")) {
+        const regexStore = database.createObjectStore("regexScripts", { keyPath: "id" });
+        regexStore.createIndex("by-name", "name");
+        regexStore.createIndex("by-characterId", "characterId");
+        regexStore.createIndex("by-updatedAt", "updatedAt");
       }
     },
   });
@@ -266,4 +286,43 @@ function createEntityStore(
   const store = database.createObjectStore(storeName, { keyPath: "id" });
   store.createIndex("by-name", "name");
   store.createIndex("by-updatedAt", "updatedAt");
+}
+
+export async function saveRegexScript(
+  script: StoredRegexScript,
+  database?: MySillyDatabaseConnection,
+): Promise<string> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.put("regexScripts", script);
+}
+
+export async function getRegexScript(
+  id: string,
+  database?: MySillyDatabaseConnection,
+): Promise<StoredRegexScript | undefined> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.get("regexScripts", id);
+}
+
+export async function listRegexScripts(
+  database?: MySillyDatabaseConnection,
+): Promise<StoredRegexScript[]> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.getAll("regexScripts");
+}
+
+export async function listRegexScriptsByCharacterId(
+  characterId: string,
+  database?: MySillyDatabaseConnection,
+): Promise<StoredRegexScript[]> {
+  const db = database ?? (await getMySillyDatabase());
+  return db.getAllFromIndex("regexScripts", "by-characterId", characterId);
+}
+
+export async function deleteRegexScript(
+  id: string,
+  database?: MySillyDatabaseConnection,
+): Promise<void> {
+  const db = database ?? (await getMySillyDatabase());
+  await db.delete("regexScripts", id);
 }

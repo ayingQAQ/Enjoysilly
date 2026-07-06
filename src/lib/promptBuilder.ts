@@ -6,6 +6,7 @@ import type {
   PromptOrderItem,
   PromptRole,
 } from "../types/preset";
+import { executeRegexScripts, type RegexScriptLike } from "./regexEngine";
 import { replaceMacros, type MacroReplacementContext } from "./macros";
 import {
   scanWorldInfo,
@@ -35,6 +36,7 @@ export interface PromptBuilderInput {
     MacroReplacementContext,
     "characterName" | "nickname" | "userName"
   >;
+  regexScripts?: RegexScriptLike[];
 }
 
 const defaultPromptOrderCharacterId = 100001;
@@ -53,7 +55,7 @@ export function buildChatCompletionMessages(
   );
   const orderedPrompts = selectOrderedPrompts(input, promptMap);
 
-  return orderedPrompts.flatMap((prompt) => {
+  const messages = orderedPrompts.flatMap((prompt) => {
     const content = createPromptContent(prompt, context);
     const normalizedContent = replacePromptMacros(content, context.input).trim();
 
@@ -68,6 +70,8 @@ export function buildChatCompletionMessages(
       },
     ];
   });
+
+  return applyRegexScriptsToMessages(messages, context);
 }
 
 function createPromptBuilderContext(
@@ -210,4 +214,29 @@ function isPresetPromptEnabled(prompt: PresetPrompt): boolean {
 
 function isPromptOrderItemEnabled(orderItem: PromptOrderItem): boolean {
   return orderItem.enabled !== false;
+}
+
+function applyRegexScriptsToMessages(
+  messages: ChatCompletionMessage[],
+  context: PromptBuilderContext,
+): ChatCompletionMessage[] {
+  const scripts = context.input.regexScripts;
+
+  if (!scripts || scripts.length === 0) {
+    return messages;
+  }
+
+  return messages.map((message) => {
+    const result = executeRegexScripts(message.content, scripts, {
+      placement: 5,
+      promptOnly: true,
+      markdownOnly: false,
+    });
+
+    if (result.text === message.content) {
+      return message;
+    }
+
+    return { ...message, content: result.text };
+  });
 }

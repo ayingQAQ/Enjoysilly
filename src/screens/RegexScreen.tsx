@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Braces,
+  Download,
   Eye,
   FileJson2,
   ListChecks,
   Regex,
   ScrollText,
   ShieldAlert,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 
+import { deleteRegexScript, listRegexScripts, type StoredRegexScript } from "../lib/db";
+import { downloadBytesToFile } from "../lib/browserDownload";
 import {
   createRegexCatalogFilterSummary,
   filterRegexCatalogItems,
@@ -20,6 +25,8 @@ import {
   type RegexCatalogFlagFilter,
   type RegexCatalogStatusFilter,
 } from "../services/regexCatalog";
+import { importRegexScriptToDatabase } from "../services/regexImport";
+import { encodeRegexScriptsJson, createRegexScriptFileName } from "../lib/regexIO";
 
 const placementFilterAllValue = "__all_placements__";
 
@@ -33,6 +40,12 @@ export function RegexScreen() {
     useState<RegexCatalogStatusFilter>("all");
   const [flagFilter, setFlagFilter] = useState<RegexCatalogFlagFilter>("all");
   const [placementFilter, setPlacementFilter] = useState<number | "all">("all");
+
+  const [ownScripts, setOwnScripts] = useState<StoredRegexScript[]>([]);
+  const [isOwnLoading, setIsOwnLoading] = useState(true);
+  const [ownError, setOwnError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const regexImportRef = useRef<HTMLInputElement>(null);
 
   const refreshCatalog = useCallback(
     async (shouldApply: () => boolean = () => true) => {
@@ -59,15 +72,30 @@ export function RegexScreen() {
     [],
   );
 
+  const refreshOwnScripts = useCallback(async (shouldApply: () => boolean = () => true) => {
+    setIsOwnLoading(true);
+    setOwnError(null);
+
+    try {
+      const scripts = await listRegexScripts();
+      if (shouldApply()) setOwnScripts(scripts);
+    } catch (loadError: unknown) {
+      if (shouldApply()) setOwnError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      if (shouldApply()) setIsOwnLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let isActive = true;
 
     void refreshCatalog(() => isActive);
+    void refreshOwnScripts(() => isActive);
 
     return () => {
       isActive = false;
     };
-  }, [refreshCatalog]);
+  }, [refreshCatalog, refreshOwnScripts]);
 
   const allItems = catalog?.items ?? [];
   const placementFilterOptions = createPlacementFilterOptions(allItems);
@@ -97,6 +125,50 @@ export function RegexScreen() {
     setPlacementFilter("all");
   }, []);
 
+  const handleImportClick = useCallback(() => {
+    regexImportRef.current?.click();
+  }, []);
+
+  const handleImportChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+
+      setIsImporting(true);
+      setOwnError(null);
+
+      try {
+        const json = new TextDecoder().decode(new Uint8Array(await file.arrayBuffer()));
+        await importRegexScriptToDatabase(json, file.name);
+        await refreshOwnScripts();
+      } catch (err: unknown) {
+        setOwnError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsImporting(false);
+      }
+    },
+    [refreshOwnScripts],
+  );
+
+  const handleExportOwn = useCallback((script: StoredRegexScript) => {
+    const bytes = encodeRegexScriptsJson([script.payload]);
+    downloadBytesToFile(bytes, createRegexScriptFileName(script.payload), "application/json");
+  }, []);
+
+  const handleDeleteOwn = useCallback(
+    async (id: string) => {
+      if (!window.confirm("确定删除此自有正则脚本吗？")) return;
+      try {
+        await deleteRegexScript(id);
+        await refreshOwnScripts();
+      } catch (err: unknown) {
+        setOwnError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [refreshOwnScripts],
+  );
+
   return (
     <section className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-5 py-6 lg:px-8">
       <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-sm">
@@ -109,9 +181,9 @@ export function RegexScreen() {
               从已导入预设的 extensions.regex_scripts 聚合正则脚本目录。
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
-              当前页面只做只读管理和结构查看：不执行正则、不编辑脚本、不导入独立正则集合，
-              也不会运行 TavernHelper / JS-Slash-Runner。原始 preset payload 和 extensions
-              仍由预设兼容层原样保留。
+              上方目录从已导入预设只读聚合；下方“自有正则”支持导入导出 ST 正则
+              JSON。页面不会编辑来源 preset，也不会运行 TavernHelper / JS-Slash-Runner。
+              原始 preset payload 和 extensions 仍由预设兼容层原样保留。
             </p>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -331,6 +403,80 @@ export function RegexScreen() {
           </div>
         </div>
       ) : null}
+
+      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Regex size={16} className="text-[var(--accent-strong)]" />
+              自有正则
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+              管理 my_silly 自有正则脚本，支持 ST 正则 JSON 导入导出，可绑定角色。
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <input
+              ref={regexImportRef}
+              className="hidden"
+              type="file"
+              accept=".json"
+              onChange={(event) => void handleImportChange(event)}
+            />
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isImporting}
+              type="button"
+              onClick={handleImportClick}
+            >
+              {isImporting ? "导入中..." : <><Upload size={14} /> 导入 JSON</>}
+            </button>
+          </div>
+        </div>
+        {ownError ? (
+          <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{ownError}</p>
+        ) : null}
+        {isOwnLoading ? (
+          <p className="text-xs text-[var(--text-muted)]">读取自有正则...</p>
+        ) : ownScripts.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[var(--border-soft)] p-4 text-center text-xs text-[var(--text-muted)]">
+            还没有自有正则脚本。点击"导入 JSON"导入 ST 正则格式文件。
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {ownScripts.map((script) => (
+              <div
+                key={script.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2"
+              >
+                <div className="min-w-0 text-xs">
+                  <p className="font-medium text-[var(--text-primary)]">{script.name}</p>
+                  <p className="truncate text-[var(--text-muted)]">
+                    findRegex: {script.payload.findRegex?.slice(0, 60) || "空"} · replace: {script.payload.replaceString?.slice(0, 40) || "空"}
+                    {script.characterId ? ` · 绑定角色` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    className="rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-1 text-xs transition hover:border-[var(--border-strong)]"
+                    type="button"
+                    onClick={() => handleExportOwn(script)}
+                  >
+                    <Download size={14} />
+                  </button>
+                  <button
+                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 transition hover:border-red-300"
+                    type="button"
+                    onClick={() => void handleDeleteOwn(script.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {selectedItem ? (
         <RegexDetailDrawer

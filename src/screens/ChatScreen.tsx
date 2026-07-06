@@ -25,6 +25,7 @@ import {
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
+import { extractRegexScripts } from "../lib/presetIO";
 import {
   runStreamingChatContinue,
   runStreamingChatReroll,
@@ -205,6 +206,10 @@ export function ChatScreen() {
     loadedArchiveName,
     messageCount: messages.length,
   });
+  const activeRegexScripts = useMemo(
+    () => extractRegexScripts(activePreset),
+    [activePreset],
+  );
   const estimatedTokenCount = useMemo(
     () => estimateChatMessagesTokens(messages),
     [messages],
@@ -373,6 +378,7 @@ export function ChatScreen() {
           userText,
           personaDescription,
           signal: controller.signal,
+          regexScripts: activeRegexScripts,
         })) {
           setMessages(update.messages);
           setHasUnsavedChanges(true);
@@ -804,6 +810,7 @@ export function ChatScreen() {
           userName: normalizeName(userName, defaultUserName),
           personaDescription,
           signal: controller.signal,
+          regexScripts: activeRegexScripts,
         })) {
           setMessages(update.messages);
           setHasUnsavedChanges(true);
@@ -888,6 +895,7 @@ export function ChatScreen() {
         userName: normalizeName(userName, defaultUserName),
         personaDescription,
         signal: controller.signal,
+        regexScripts: activeRegexScripts,
       })) {
         setMessages(update.messages);
         setHasUnsavedChanges(true);
