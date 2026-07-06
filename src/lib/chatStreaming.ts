@@ -12,6 +12,11 @@ import {
 } from "./chatRuntime";
 import { getChatMessageDisplayText } from "./chatHistory";
 import {
+  executeRegexScripts,
+  executeRegexScriptsAsync,
+  type RegexScriptLike,
+} from "./regexEngine";
+import {
   appendAssistantResponseDelta,
   finalizeAssistantResponse,
   startChatTurn,
@@ -35,6 +40,7 @@ export interface RunStreamingChatTurnInput
   now?: Date;
   userExtra?: UnknownRecord;
   assistantExtra?: UnknownRecord;
+  regexScripts?: RegexScriptLike[];
 }
 
 export interface RunStreamingChatRerollInput
@@ -50,6 +56,7 @@ export interface RunStreamingChatRerollInput
   fetchImpl?: StreamFetchLike;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  regexScripts?: RegexScriptLike[];
 }
 
 export interface RunStreamingChatContinueInput
@@ -65,6 +72,7 @@ export interface RunStreamingChatContinueInput
   fetchImpl?: StreamFetchLike;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  regexScripts?: RegexScriptLike[];
 }
 
 export type StreamingChatTurnUpdate =
@@ -158,10 +166,11 @@ export interface StreamingChatContinueFinishedUpdate {
 export async function* runStreamingChatTurn(
   input: RunStreamingChatTurnInput,
 ): AsyncGenerator<StreamingChatTurnUpdate> {
+  const processedUserText = applyUserInputRegex(input.userText, input.regexScripts);
   const turn = startChatTurn({
     messages: input.messages,
     userName: input.userName,
-    userText: input.userText,
+    userText: processedUserText,
     assistantName: input.assistantName ?? input.character.data.name,
     now: input.now,
     userExtra: input.userExtra,
@@ -221,6 +230,11 @@ export async function* runStreamingChatTurn(
     content,
     extra: finishReason ? { finish_reason: finishReason } : undefined,
   });
+  messages = await applyAIOutputRegex(
+    messages,
+    turn.assistantMessageIndex,
+    input.regexScripts,
+  );
 
   yield {
     kind: "finished",
@@ -297,6 +311,11 @@ export async function* runStreamingChatReroll(
     content,
     finishReason ? { finish_reason: finishReason } : undefined,
   );
+  messages = await applyAIOutputRegex(
+    messages,
+    input.assistantMessageIndex,
+    input.regexScripts,
+  );
 
   yield {
     kind: "finished",
@@ -371,6 +390,11 @@ export async function* runStreamingChatContinue(
     input.assistantMessageIndex,
     baseContent + continuation,
     finishReason ? { finish_reason: finishReason } : undefined,
+  );
+  messages = await applyAIOutputRegex(
+    messages,
+    input.assistantMessageIndex,
+    input.regexScripts,
   );
 
   yield {
@@ -466,4 +490,66 @@ function replaceMessageAt(
   return messages.map((currentMessage, currentIndex) =>
     currentIndex === index ? message : currentMessage,
   );
+}
+
+function applyUserInputRegex(
+  text: string,
+  scripts?: RegexScriptLike[],
+): string {
+  if (!scripts || scripts.length === 0) {
+    return text;
+  }
+
+  return executeRegexScripts(text, scripts, {
+    placement: 1,
+    promptOnly: false,
+    markdownOnly: false,
+  }).text;
+}
+
+async function applyAIOutputRegex(
+  messages: ChatMessageLine[],
+  assistantIndex: number,
+  scripts?: RegexScriptLike[],
+): Promise<ChatMessageLine[]> {
+  if (!scripts || scripts.length === 0) {
+    return messages;
+  }
+
+  const message = messages[assistantIndex];
+
+  if (!message) {
+    return messages;
+  }
+
+  const currentText = getChatMessageDisplayText(message);
+
+  if (currentText.length === 0) {
+    return messages;
+  }
+
+  const result = await executeRegexScriptsAsync(currentText, scripts, {
+    placement: 2,
+    promptOnly: false,
+  });
+
+  if (result.text === currentText) {
+    return messages;
+  }
+
+  const swipes = Array.isArray(message.swipes) ? [...message.swipes] : [currentText];
+  const swipeIndex =
+    typeof message.swipe_id === "number" &&
+    Number.isInteger(message.swipe_id) &&
+    message.swipe_id >= 0
+      ? message.swipe_id
+      : Math.max(0, swipes.length - 1);
+
+  swipes[swipeIndex] = result.text;
+
+  return replaceMessageAt(messages, assistantIndex, {
+    ...message,
+    mes: result.text,
+    swipes,
+  });
 }

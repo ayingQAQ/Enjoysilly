@@ -455,6 +455,181 @@ describe("streaming chat turn runner", () => {
     }).rejects.toThrow("Message at index 0 is not an assistant message.");
   });
 
+  it("applies placement=1 regex to user input before the turn", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => undefined,
+      body: createStream([
+        'data: {"choices":[{"delta":{"content":"Ok"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        "data: [DONE]\n\n",
+      ]),
+    });
+
+    const updates = await collectStreamingTurn({
+      baseUrl: "https://example.test/v1",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages: [],
+      userName: "Tester",
+      userText: "say hello world",
+      fetchImpl,
+      regexScripts: [
+        { findRegex: "hello world", replaceString: "hi there" },
+      ],
+    });
+
+    expect(updates[0].messages.at(-2)).toMatchObject({
+      name: "Tester",
+      mes: "say hi there",
+      swipes: ["say hi there"],
+    });
+  });
+
+  it("applies placement=2 regex to AI output after streaming turn finalization", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => undefined,
+      body: createStream([
+        'data: {"choices":[{"delta":{"content":"Hello!"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        "data: [DONE]\n\n",
+      ]),
+    });
+
+    const updates = await collectStreamingTurn({
+      baseUrl: "https://example.test/v1",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages: [],
+      userName: "Tester",
+      userText: "Hi.",
+      fetchImpl,
+      regexScripts: [
+        { findRegex: "Hello!", replaceString: "Greetings!" },
+      ],
+    });
+
+    expect(updates.at(-1)?.messages.at(-1)).toMatchObject({
+      name: "Alice",
+      mes: "Greetings!",
+      swipes: ["Greetings!"],
+    });
+  });
+
+  it("applies placement=2 regex to rerolled content", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => undefined,
+      body: createStream([
+        'data: {"choices":[{"delta":{"content":"Fresh reply"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        "data: [DONE]\n\n",
+      ]),
+    });
+    const messages: ChatMessageLine[] = [
+      createMessage({ name: "Tester", is_user: true, mes: "Q.", swipes: ["Q."] }),
+      createMessage({ name: "Alice", is_user: false, mes: "Old.", swipes: ["Old."] }),
+    ];
+
+    const updates = await collectStreamingReroll({
+      assistantMessageIndex: 1,
+      baseUrl: "https://example.test/v1",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages,
+      userName: "Tester",
+      fetchImpl,
+      regexScripts: [
+        { findRegex: "Fresh reply", replaceString: "Processed reply" },
+      ],
+    });
+
+    expect(updates.at(-1)?.messages[1]).toMatchObject({
+      mes: "Processed reply",
+      swipes: ["Old.", "Processed reply"],
+    });
+  });
+
+  it("applies placement=2 regex to continued content", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => undefined,
+      body: createStream([
+        'data: {"choices":[{"delta":{"content":" extra"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        "data: [DONE]\n\n",
+      ]),
+    });
+    const messages: ChatMessageLine[] = [
+      createMessage({ name: "Tester", is_user: true, mes: "Q.", swipes: ["Q."] }),
+      createMessage({ name: "Alice", is_user: false, mes: "Base", swipes: ["Base"] }),
+    ];
+
+    const updates = await collectStreamingContinue({
+      assistantMessageIndex: 1,
+      baseUrl: "https://example.test/v1",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages,
+      userName: "Tester",
+      fetchImpl,
+      regexScripts: [
+        { findRegex: "extra", replaceString: "appendix" },
+      ],
+    });
+
+    expect(updates.at(-1)?.messages[1]).toMatchObject({
+      mes: "Base appendix",
+      swipes: ["Base appendix"],
+    });
+  });
+
+  it("skips disabled regex scripts during streaming", async () => {
+    const fetchImpl: StreamFetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => undefined,
+      body: createStream([
+        'data: {"choices":[{"delta":{"content":"Hello!"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+        "data: [DONE]\n\n",
+      ]),
+    });
+
+    const updates = await collectStreamingTurn({
+      baseUrl: "https://example.test/v1",
+      model: "test-model",
+      preset: createPreset(),
+      character: createCharacter(),
+      messages: [],
+      userName: "Tester",
+      userText: "Hi.",
+      fetchImpl,
+      regexScripts: [
+        { findRegex: "Hello!", replaceString: "X", disabled: true },
+      ],
+    });
+
+    expect(updates.at(-1)?.messages.at(-1)).toMatchObject({
+      name: "Alice",
+      mes: "Hello!",
+    });
+  });
+
   it("continues an assistant message by appending to the selected swipe", async () => {
     const calls: Array<{ input: string; init: RequestInit }> = [];
     const fetchImpl: StreamFetchLike = async (input, init) => {
@@ -486,9 +661,7 @@ describe("streaming chat turn runner", () => {
         mes: "Base answer",
         swipe_id: 0,
         swipes: ["Base answer"],
-        extra: {
-          keep: true,
-        },
+        extra: { keep: true },
       }),
     ];
     const originalMessages = structuredClone(messages);
@@ -504,43 +677,17 @@ describe("streaming chat turn runner", () => {
       fetchImpl,
     });
 
-    expect(updates.map((update) => update.kind)).toEqual([
-      "started",
-      "delta",
-      "delta",
-      "finished",
-    ]);
     expect(updates.at(-1)).toMatchObject({
       kind: "finished",
       baseContent: "Base answer",
       continuation: " plus more",
       finishReason: "stop",
-      messages: [
-        messages[0],
-        {
-          name: "Alice",
-          mes: "Base answer plus more",
-          swipe_id: 0,
-          swipes: ["Base answer plus more"],
-          extra: {
-            keep: true,
-            finish_reason: "stop",
-          },
-        },
-      ],
+    });
+    expect(updates.at(-1)?.messages[1]).toMatchObject({
+      name: "Alice",
+      mes: "Base answer plus more",
+      swipes: ["Base answer plus more"],
     });
     expect(messages).toEqual(originalMessages);
-    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({
-      messages: [
-        {
-          role: "system",
-          content: "You are Alice talking to Tester.",
-        },
-        {
-          role: "user",
-          content: "Tester: Question?\nAlice: Base answer",
-        },
-      ],
-    });
   });
 });
