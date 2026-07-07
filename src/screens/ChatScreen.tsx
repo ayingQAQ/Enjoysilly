@@ -64,6 +64,7 @@ import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
 import {
   AssetSelectionSummary,
   ChatArchiveList,
+  ChatBindingBanner,
   ChatBubble,
   EmptyChatState,
   Field,
@@ -113,6 +114,9 @@ import {
   selectChatPresetPayload,
   selectVisibleQuickReplySets,
   updateChatMessageTextAt,
+  buildChatBindingRestoreHint,
+  computeChatBindingRestoreTargets,
+  type ChatBindingRestoreHint,
 } from "./chatScreenHelpers";
 
 export function ChatScreen() {
@@ -173,6 +177,8 @@ export function ChatScreen() {
   const [defaultWorldId, setDefaultWorldId] = useState<string | undefined>(undefined);
   const [activePersonaId, setActivePersonaId] = useState<string | undefined>(undefined);
   const [activeProfileId, setActiveProfileId] = useState<string | undefined>(undefined);
+  const [bindingHint, setBindingHint] = useState<ChatBindingRestoreHint | null>(null);
+  const [isRestoringBinding, setIsRestoringBinding] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
   const lastAutoGreetingCharacterIdRef = useRef<string | null>(null);
@@ -251,6 +257,20 @@ export function ChatScreen() {
     () => selectVisibleQuickReplySets(qrSets, defaultQuickReplySetId),
     [qrSets, defaultQuickReplySetId],
   );
+  const bindingRestoreTargets = useMemo(() => {
+    if (!bindingHint) return null;
+    const targets = computeChatBindingRestoreTargets(
+      bindingHint.snapshot,
+      {
+        presetId: selectedPresetId === minimalPresetOptionId ? undefined : selectedPresetId,
+        worldId: defaultWorldId,
+        quickReplySetId: defaultQuickReplySetId,
+        personaId: activePersonaId,
+      },
+    );
+    return Object.keys(targets).length > 0 ? targets : null;
+  }, [bindingHint, selectedPresetId, defaultWorldId, defaultQuickReplySetId, activePersonaId]);
+
   const chatBinding = useMemo(
     () => ({
       presetId:
@@ -901,6 +921,18 @@ export function ChatScreen() {
         setLoadedArchiveId(detail.summary.id);
         setLoadedArchiveName(detail.summary.name);
         setStatusText(`已加载存档：${detail.summary.name}`);
+
+        // 提取 binding 提示
+        const hint = buildChatBindingRestoreHint(
+          detail.stored.payload.metadata,
+          {
+            presetId: selectedPresetId === minimalPresetOptionId ? undefined : selectedPresetId,
+            worldId: defaultWorldId,
+            quickReplySetId: defaultQuickReplySetId,
+            personaId: activePersonaId,
+          },
+        );
+        setBindingHint(hint);
       } catch (loadError: unknown) {
         setArchiveError(formatUnknownError(loadError));
         setStatusText("读取存档失败");
@@ -908,8 +940,66 @@ export function ChatScreen() {
         setLoadingArchiveId(null);
       }
     },
-    [archiveActionId, isStreaming, loadingArchiveId, selectedCharacterId],
+    [archiveActionId, isStreaming, loadingArchiveId, selectedCharacterId, selectedPresetId, defaultWorldId, defaultQuickReplySetId, activePersonaId],
   );
+
+  const handleRestoreBinding = useCallback(async () => {
+    if (!bindingHint) return;
+    setIsRestoringBinding(true);
+
+    const targets = computeChatBindingRestoreTargets(
+      bindingHint.snapshot,
+      {
+        presetId: selectedPresetId === minimalPresetOptionId ? undefined : selectedPresetId,
+        worldId: defaultWorldId,
+        quickReplySetId: defaultQuickReplySetId,
+        personaId: activePersonaId,
+      },
+    );
+
+    try {
+      // 恢复预设
+      if (targets.presetId) {
+        setSelectedPresetId(targets.presetId);
+      }
+
+      // 恢复世界书
+      if (targets.worldId) {
+        const world = await getWorldInfo(targets.worldId);
+        if (world) {
+          setWorldInfoEntries(resolveDefaultWorldInfoEntries(targets.worldId, world));
+          setDefaultWorldId(targets.worldId);
+        }
+      }
+
+      // 恢复快捷回复
+      if (targets.quickReplySetId) {
+        setDefaultQuickReplySetId(targets.quickReplySetId);
+      }
+
+      // 恢复 persona（重新加载）
+      if (targets.personaId) {
+        const personas = await loadUserPersonas();
+        const persona = personas.find((p) => p.id === targets.personaId);
+        if (persona) {
+          setUserName(persona.name);
+          if (persona.description) setPersonaDescription(persona.description);
+          setActivePersonaId(persona.id);
+        }
+      }
+
+      setStatusText("已恢复存档时的配置");
+      setBindingHint(null);
+    } catch (err: unknown) {
+      setStatusText(`恢复配置失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsRestoringBinding(false);
+    }
+  }, [bindingHint, selectedPresetId, defaultWorldId, defaultQuickReplySetId, activePersonaId]);
+
+  const dismissBindingHint = useCallback(() => {
+    setBindingHint(null);
+  }, []);
 
   const handleNewChat = useCallback(() => {
     if (isStreaming || isImportingChat) {
@@ -929,6 +1019,7 @@ export function ChatScreen() {
     setError(null);
     setSaveMessage(null);
     setLoadedArchiveId(null);
+    setBindingHint(null);
     setLoadedArchiveName(null);
     setLoadedChatMetadata(null);
     setHasUnsavedChanges(false);
@@ -1442,6 +1533,18 @@ export function ChatScreen() {
               </button>
             </div>
           </div>
+
+          {bindingHint && bindingRestoreTargets ? (
+            <div className="px-4 py-2">
+              <ChatBindingBanner
+                hint={bindingHint}
+                missingCount={bindingHint.missingAssets.length}
+                isRestoring={isRestoringBinding}
+                onRestore={() => void handleRestoreBinding()}
+                onDismiss={dismissBindingHint}
+              />
+            </div>
+          ) : null}
 
           <div className="min-h-0 px-4 py-4">
             {messages.length === 0 ? (

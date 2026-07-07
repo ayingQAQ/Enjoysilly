@@ -635,3 +635,58 @@ export function TextAreaField({
     </label>
   );
 }
+
+// ─── ChatBindingBanner — 加载旧聊天时展示保存时的配置，支持一键恢复 ───
+
+export function ChatBindingBanner({
+  hint,
+  missingCount,
+  onRestore,
+  onDismiss,
+  isRestoring,
+}: {
+  hint: { summary: string[]; missingAssets: string[] };
+  missingCount: number;
+  onRestore: () => void;
+  onDismiss: () => void;
+  isRestoring?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-1.5">
+          <p className="font-medium text-amber-800">
+            该对话保存时记录了当时的配置
+          </p>
+          <ul className="list-inside list-disc space-y-0.5 text-xs leading-6 text-amber-700">
+            {hint.summary.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+          {hint.missingAssets.length > 0 ? (
+            <p className="text-xs text-red-600">
+              已缺失 {missingCount} 项（原资产可能已被删除）
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-700 disabled:opacity-60"
+            disabled={isRestoring}
+            type="button"
+            onClick={onRestore}
+          >
+            {isRestoring ? "恢复中..." : "恢复此配置"}
+          </button>
+          <button
+            className="rounded-lg px-2 py-1.5 text-xs text-amber-600 transition hover:text-amber-800"
+            type="button"
+            onClick={onDismiss}
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

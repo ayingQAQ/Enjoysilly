@@ -15,7 +15,7 @@ import type {
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
 import type { ChatBindingSnapshot } from "../types/localProfile";
-import { serializeChatBindingToMetadata } from "../types/localProfile";
+import { extractChatBindingFromMetadata, serializeChatBindingToMetadata } from "../types/localProfile";
 
 export const localCharacterOptionId = "__local_character__";
 export const minimalPresetOptionId = "__minimal_preset__";
@@ -592,4 +592,99 @@ function firstString(...values: unknown[]): string | undefined {
   }
 
   return undefined;
+}
+
+// ─── ChatBinding restore — 加载旧聊天时从 chat_metadata 提取并提示恢复 ───
+
+export interface ChatBindingRestoreHint {
+  snapshot: ChatBindingSnapshot;
+  hasContent: boolean;
+  summary: string[];
+  missingAssets: string[];
+}
+
+export interface ChatBindingRestoreTargets {
+  presetId?: string;
+  worldId?: string;
+  quickReplySetId?: string;
+  personaId?: string;
+}
+
+/**
+ * 从已加载聊天的 metadata 中提取 binding snapshot，
+ * 并检查当前已选择的资产是否与 binding 不同。
+ */
+export function buildChatBindingRestoreHint(
+  chatMetadata: { chat_metadata?: unknown } | null,
+  current: ChatBindingRestoreTargets,
+): ChatBindingRestoreHint | null {
+  if (!chatMetadata?.chat_metadata) return null;
+
+  const snapshot = extractChatBindingFromMetadata(
+    chatMetadata.chat_metadata as Record<string, unknown>,
+  );
+
+  const hasContent =
+    Boolean(snapshot.presetId) ||
+    snapshot.worldIds.length > 0 ||
+    snapshot.regexSourceIds.length > 0 ||
+    snapshot.quickReplySetIds.length > 0 ||
+    Boolean(snapshot.personaId);
+
+  if (!hasContent) return null;
+
+  const summary: string[] = [];
+  const missingAssets: string[] = [];
+
+  if (snapshot.presetId) {
+    summary.push(`预设：${snapshot.presetId}`);
+  }
+
+  if (snapshot.worldIds.length > 0) {
+    summary.push(`世界书：${snapshot.worldIds.length} 个`);
+  }
+
+  if (snapshot.quickReplySetIds.length > 0) {
+    summary.push(`快速回复：${snapshot.quickReplySetIds.length} 个`);
+  }
+
+  if (snapshot.personaId) {
+    summary.push(`Persona：${snapshot.personaId}`);
+  }
+
+  return { snapshot, hasContent, summary, missingAssets };
+}
+
+/**
+ * 从 binding snapshot 生成恢复目标（只返回当前不同的值）。
+ */
+export function computeChatBindingRestoreTargets(
+  snapshot: ChatBindingSnapshot,
+  current: ChatBindingRestoreTargets,
+): Partial<ChatBindingRestoreTargets> {
+  const targets: Partial<ChatBindingRestoreTargets> = {};
+
+  if (snapshot.presetId && snapshot.presetId !== current.presetId) {
+    targets.presetId = snapshot.presetId;
+  }
+
+  if (snapshot.worldIds.length > 0) {
+    const worldId = snapshot.worldIds[0];
+    if (worldId !== current.worldId) {
+      targets.worldId = worldId;
+    }
+  }
+
+  if (snapshot.quickReplySetIds.length > 0) {
+    const qrId = snapshot.quickReplySetIds[0];
+    if (qrId !== current.quickReplySetId) {
+      targets.quickReplySetId = qrId;
+    }
+  }
+
+  if (snapshot.personaId && snapshot.personaId !== current.personaId) {
+    targets.personaId = snapshot.personaId;
+  }
+
+  return targets;
 }
