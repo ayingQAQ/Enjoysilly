@@ -168,6 +168,50 @@ button {
   padding: 0;
 }
 
+.chat-markdown img,
+.chat-markdown video,
+.chat-markdown canvas,
+.chat-markdown svg {
+  height: auto;
+  max-width: 100%;
+}
+
+.chat-markdown img {
+  display: block;
+  border-radius: 0.6rem;
+}
+
+.chat-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--border-soft);
+  padding: 0.35rem 0.55rem;
+  text-align: left;
+}
+
+.chat-markdown details {
+  border: 1px solid var(--border-soft);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  padding: 0.65rem 0.75rem;
+}
+
+.chat-markdown summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chat-markdown [style] {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .chat-markdown blockquote {
   border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
   padding-left: 0.8rem;
@@ -176,4 +220,15 @@ button {
 
 .chat-markdown-user blockquote {
   color: rgb(255 255 255 / 0.82);
+}
+
+.chat-html-frame {
+  display: block;
+  width: min(100%, 760px);
+  max-width: 100%;
+  min-height: 180px;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.9rem;
+  background: #ffffff;
+  overflow: auto;
 }

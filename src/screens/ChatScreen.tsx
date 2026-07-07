@@ -73,6 +73,7 @@ import {
   SelectField,
   SummaryTile,
   TextAreaField,
+  type ChatHtmlCardAction,
 } from "./ChatScreenPanels";
 import {
   cloneChatMessages,
@@ -116,6 +117,8 @@ import {
 export function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessageLine[]>([]);
   const [inputText, setInputText] = useState("");
+  const interactiveSubmitTextRef = useRef<string | null>(null);
+  const chatFormRef = useRef<HTMLFormElement>(null);
   const [baseUrl, setBaseUrl] = useState(defaultBaseUrl);
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(defaultModel);
@@ -538,7 +541,9 @@ export function ChatScreen() {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
-      const userText = inputText.trim();
+      const submittedText = interactiveSubmitTextRef.current ?? inputText;
+      interactiveSubmitTextRef.current = null;
+      const userText = submittedText.trim();
       const trimmedBaseUrl = baseUrl.trim();
       const trimmedModel = model.trim();
 
@@ -630,6 +635,37 @@ export function ChatScreen() {
       personaDescription,
       userName,
     ],
+  );
+
+  const handleHtmlCardAction = useCallback(
+    (action: ChatHtmlCardAction) => {
+      const text = action.text.trim();
+      if (!text) {
+        return;
+      }
+
+      if (action.action === "appendDraft") {
+        setInputText((current) => appendQuickReplyToInput(current, text));
+        setStatusText("HTML card content appended to draft");
+        return;
+      }
+
+      setInputText(text);
+
+      if (action.action === "sendMessage") {
+        if (isStreaming) {
+          setStatusText("HTML card action is waiting for current generation to finish");
+          return;
+        }
+
+        interactiveSubmitTextRef.current = text;
+        window.setTimeout(() => chatFormRef.current?.requestSubmit(), 0);
+        return;
+      }
+
+      setStatusText("HTML card content copied to draft");
+    },
+    [isStreaming],
   );
 
   const handleStop = useCallback(() => {
@@ -1268,8 +1304,8 @@ export function ChatScreen() {
         </div>
       </div>
 
-      <div className="grid min-h-[520px] gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="flex min-h-0 flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex w-full min-h-0 flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm">
           <div className="flex flex-col gap-3 border-b border-[var(--border-soft)] px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
@@ -1360,7 +1396,7 @@ export function ChatScreen() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="min-h-0 px-4 py-4">
             {messages.length === 0 ? (
               <EmptyChatState />
             ) : (
@@ -1372,6 +1408,7 @@ export function ChatScreen() {
                     message={message}
                     onDelete={() => handleDeleteMessage(index)}
                     onEdit={() => handleEditMessage(index)}
+                    onHtmlCardAction={handleHtmlCardAction}
                     onReroll={() => void handleRerollMessage(index)}
                     onSwipeNext={() => handleSelectMessageSwipe(index, 1)}
                     onSwipePrevious={() => handleSelectMessageSwipe(index, -1)}
@@ -1394,6 +1431,7 @@ export function ChatScreen() {
 
           <form
             className="border-t border-[var(--border-soft)] p-4"
+            ref={chatFormRef}
             onSubmit={(event) => void handleSend(event)}
           >
             <label className="sr-only" htmlFor="chat-message-input">
@@ -1460,7 +1498,7 @@ export function ChatScreen() {
           </form>
         </div>
 
-        <aside className="flex min-h-0 flex-col gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
+        <aside className="flex w-full min-h-0 flex-col gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
           <PanelTitle
             icon={<UserRound size={17} />}
             title="本次对话对象"

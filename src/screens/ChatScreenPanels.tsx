@@ -1,4 +1,12 @@
-import type { ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import {
   FileJson2,
   Loader2,
@@ -8,7 +16,11 @@ import {
 } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
-import { renderSafeMarkdownToHtml } from "../lib/markdown";
+import {
+  isRenderableHtmlDocumentMessage,
+  renderSafeHtmlDocumentToSrcDoc,
+  renderSafeMarkdownToHtml,
+} from "../lib/markdown";
 import { estimateTextTokens } from "../lib/tokenEstimate";
 import type { CharacterDetailSummary } from "../services/characterDetails";
 import type { ChatArchiveSummary } from "../services/chatArchive";
@@ -19,6 +31,11 @@ import {
   normalizeMessageSwipeIndex,
 } from "./chatScreenHelpers";
 
+export type ChatHtmlCardAction = {
+  action: "appendDraft" | "sendMessage" | "setDraft";
+  text: string;
+};
+
 export function ChatBubble({
   disabled,
   message,
@@ -27,6 +44,7 @@ export function ChatBubble({
   onReroll,
   onSwipeNext,
   onSwipePrevious,
+  onHtmlCardAction,
 }: {
   disabled: boolean;
   message: ChatMessageLine;
@@ -35,11 +53,13 @@ export function ChatBubble({
   onReroll: () => void;
   onSwipeNext: () => void;
   onSwipePrevious: () => void;
+  onHtmlCardAction?: (action: ChatHtmlCardAction) => void;
 }) {
   const isUser = message.is_user === true;
   const canReroll = message.is_user !== true && message.is_system !== true;
   const content = getChatMessageDisplayText(message);
-  const contentHtml = renderSafeMarkdownToHtml(content);
+  const shouldRenderHtmlDocument = isRenderableHtmlDocumentMessage(content);
+  const contentHtml = shouldRenderHtmlDocument ? "" : renderSafeMarkdownToHtml(content);
   const estimatedTokens = estimateTextTokens(content);
   const swipeCount = getMessageSwipeCount(message);
   const swipeIndex = normalizeMessageSwipeIndex(message);
@@ -100,13 +120,21 @@ export function ChatBubble({
           </div>
         </div>
         {content ? (
-          <div
-            className={[
-              "chat-markdown break-words text-sm leading-7",
-              isUser ? "chat-markdown-user" : "",
-            ].join(" ")}
-            dangerouslySetInnerHTML={{ __html: contentHtml }}
-          />
+          shouldRenderHtmlDocument ? (
+            <ChatHtmlDocumentFrame
+              content={content}
+              onAction={onHtmlCardAction}
+              title={`${message.name} HTML message`}
+            />
+          ) : (
+            <div
+              className={[
+                "chat-markdown break-words text-sm leading-7",
+                isUser ? "chat-markdown-user" : "",
+              ].join(" ")}
+              dangerouslySetInnerHTML={{ __html: contentHtml }}
+            />
+          )
         ) : (
           <p className="whitespace-pre-wrap break-words text-sm leading-7">
             正在生成...
@@ -152,6 +180,89 @@ export function ChatBubble({
         ) : null}
       </div>
     </article>
+  );
+}
+
+function ChatHtmlDocumentFrame({
+  content,
+  onAction,
+  title,
+}: {
+  content: string;
+  onAction?: (action: ChatHtmlCardAction) => void;
+  title: string;
+}) {
+  const [height, setHeight] = useState(560);
+  const bridgeId = useId();
+  const srcDoc = useMemo(
+    () => renderSafeHtmlDocumentToSrcDoc(content, bridgeId),
+    [bridgeId, content],
+  );
+
+  const applyHeight = useCallback((nextHeight: number) => {
+    if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
+      return;
+    }
+
+    setHeight(Math.min(Math.max(Math.ceil(nextHeight), 180), 760));
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      if (!event.data || typeof event.data !== "object") {
+        return;
+      }
+
+      const data = event.data as {
+        action?: ChatHtmlCardAction["action"];
+        bridgeId?: string;
+        height?: number;
+        source?: string;
+        text?: string;
+        type?: string;
+      };
+
+      if (data.source !== "my-silly-html-card" || data.bridgeId !== bridgeId) {
+        return;
+      }
+
+      if (data.type === "resize") {
+        applyHeight(Number(data.height));
+        return;
+      }
+
+      if (
+        data.type === "action" &&
+        (data.action === "appendDraft" ||
+          data.action === "sendMessage" ||
+          data.action === "setDraft") &&
+        typeof data.text === "string"
+      ) {
+        onAction?.({ action: data.action, text: data.text });
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [applyHeight, bridgeId, onAction]);
+
+  const handleLoad = useCallback((event: SyntheticEvent<HTMLIFrameElement>) => {
+    event.currentTarget.contentWindow?.postMessage(
+      { source: "my-silly-parent", type: "resize" },
+      "*",
+    );
+  }, []);
+
+  return (
+    <iframe
+      className="chat-html-frame"
+      referrerPolicy="no-referrer"
+      sandbox="allow-scripts"
+      srcDoc={srcDoc}
+      style={{ height }}
+      title={title}
+      onLoad={handleLoad}
+    />
   );
 }
 
