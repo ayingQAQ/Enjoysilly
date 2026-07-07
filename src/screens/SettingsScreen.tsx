@@ -329,7 +329,7 @@ export function SettingsScreen() {
               <TextField
                 label="模型名"
                 value={form.model}
-                placeholder="测试连接后会自动填入模型"
+                placeholder={defaultApiModel}
                 onChange={(value) => updateField("model", value)}
               />
             )}

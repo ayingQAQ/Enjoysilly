@@ -51,7 +51,7 @@ export async function testOpenAICompatibleConnection(
       return {
         ok: false,
         diagnostic: "无法连接到服务器。",
-        detail: "可能是地址错误、服务未启动、或浏览器 CORS 策略拦截了请求。如果使用 OpenAI 官方接口，需要配合 CORS 代理或本地推理端点。",
+        detail: "可能是地址错误、服务未启动，或浏览器 CORS 策略拦截了请求。如果使用 OpenAI 官方接口，需要配合 CORS 代理或本地推理端点。",
       };
     }
 
@@ -73,8 +73,8 @@ export async function testOpenAICompatibleConnection(
   if (response.status === 404) {
     return {
       ok: false,
-      diagnostic: `端点未找到（404）。`,
-      detail: "Base URL 可能不是 /v1 路径，或此端点不支持 GET /models。请确认地址格式，如 https://api.openai.com/v1。",
+      diagnostic: "端点未找到（404）。",
+      detail: "Base URL 可能不是 /v1 路径，或此端点不支持 GET /models。已自动尝试补全 /v1，请确认服务地址格式。",
     };
   }
 

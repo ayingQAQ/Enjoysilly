@@ -11,6 +11,7 @@ import {
   createLocalChatCharacter,
   createMinimalChatPreset,
   deleteChatMessageAt,
+  extractCharacterRegexScripts,
   extractWorldInfoEntries,
   getChatArchiveFilterCharacterId,
   getLastAssistantMessageIndex,
@@ -90,6 +91,37 @@ describe("ChatScreen helpers", () => {
     expect(selectChatPresetPayload(undefined, fallbackPreset)).toBe(
       fallbackPreset,
     );
+  });
+
+  it("extracts character embedded regex scripts with RP-Hub field aliases", () => {
+    const character = createLocalChatCharacter({
+      name: "regex character",
+      description: "test",
+    });
+
+    character.data.extensions = {
+      regex_scripts: [
+        {
+          name: "status renderer",
+          regex: "状态栏:(.*)",
+          replacement: "<div>$1</div>",
+          enabled: false,
+          placement: [2],
+          markdownOnly: true,
+        },
+      ],
+    };
+
+    expect(extractCharacterRegexScripts(character)).toEqual([
+      expect.objectContaining({
+        scriptName: "status renderer",
+        findRegex: "状态栏:(.*)",
+        replaceString: "<div>$1</div>",
+        disabled: true,
+        placement: [2],
+        markdownOnly: true,
+      }),
+    ]);
   });
 
   it("creates save snapshot input for an imported character", () => {

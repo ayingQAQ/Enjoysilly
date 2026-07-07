@@ -8,6 +8,7 @@ export interface RegexScriptLike {
   disabled?: boolean;
   markdownOnly?: boolean;
   promptOnly?: boolean;
+  runOnEdit?: boolean;
   substituteRegex?: number;
   minDepth?: number | null;
   maxDepth?: number | null;

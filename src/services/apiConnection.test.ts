@@ -19,40 +19,51 @@ describe("apiConnection", () => {
     expect(result.diagnostic).toContain("连接成功");
     expect(result.models).toEqual(["gpt-4"]);
     expect(result.selectedModel).toBe("gpt-4");
-    expect(result.resolvedBaseUrl).toBe("https://example.test/v1");
   });
 
-  it("falls back to /v1 and keeps a requested model when available", async () => {
-    const requestedUrls: string[] = [];
+  it("tries a /v1 fallback and preserves the resolved Base URL", async () => {
+    const calls: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
-      requestedUrls.push(String(input));
+      calls.push(String(input));
 
-      if (String(input) === "https://api.deepseek.com/models") {
+      if (calls.length === 1) {
         return new Response("not found", { status: 404 });
       }
 
-      return new Response(
-        JSON.stringify({ data: [{ id: "deepseek-chat" }, { id: "deepseek-reasoner" }] }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ data: [{ id: "deepseek-chat" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     };
 
     const result = await testOpenAICompatibleConnection({
       baseUrl: "https://api.deepseek.com",
-      model: "deepseek-reasoner",
       fetchImpl,
     });
 
-    expect(requestedUrls).toEqual([
+    expect(calls).toEqual([
       "https://api.deepseek.com/models",
       "https://api.deepseek.com/v1/models",
     ]);
     expect(result.ok).toBe(true);
     expect(result.resolvedBaseUrl).toBe("https://api.deepseek.com/v1");
-    expect(result.selectedModel).toBe("deepseek-reasoner");
+    expect(result.selectedModel).toBe("deepseek-chat");
+  });
+
+  it("keeps the requested model when it exists in the returned list", async () => {
+    const fetchImpl = async () =>
+      new Response(JSON.stringify({ data: [{ id: "gpt-4o-mini" }, { id: "gpt-4.1" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    const result = await testOpenAICompatibleConnection({
+      baseUrl: "https://example.test/v1",
+      model: "gpt-4.1",
+      fetchImpl,
+    });
+
+    expect(result.selectedModel).toBe("gpt-4.1");
   });
 
   it("detects 401 as auth failure", async () => {

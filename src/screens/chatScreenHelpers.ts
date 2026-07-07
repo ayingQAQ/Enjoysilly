@@ -1,6 +1,7 @@
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { replaceMacros } from "../lib/macros";
 import { formatSillyTavernChatDate } from "../lib/chatTurn";
+import type { RegexScriptLike } from "../lib/regexEngine";
 import type { WorldInfoScanInputEntry } from "../lib/worldInfoScan";
 import type { SaveChatSnapshotToDatabaseInput } from "../services/chatPersistence";
 import type { ImportChatToDatabaseOptions } from "../services/chatImport";
@@ -104,6 +105,25 @@ export function selectChatPresetPayload(
   fallbackPreset: ChatCompletionPreset,
 ): ChatCompletionPreset {
   return importedPreset ?? fallbackPreset;
+}
+
+export function extractCharacterRegexScripts(
+  character: CharacterCard,
+): RegexScriptLike[] {
+  const characterRecord = character as Record<string, unknown>;
+  const dataRecord = character.data as Record<string, unknown>;
+  const extensionsRecord = toRecord(character.data.extensions);
+  const nestedExtensionsRecord = toRecord(extensionsRecord?.extensions);
+  const records = [
+    ...readRegexScriptArray(extensionsRecord?.regex_scripts),
+    ...readRegexScriptArray(nestedExtensionsRecord?.regex_scripts),
+    ...readRegexScriptArray(dataRecord.regex_scripts),
+    ...readRegexScriptArray(characterRecord.regex_scripts),
+  ];
+
+  return records
+    .map((record, index) => normalizeCharacterRegexScript(record, index))
+    .filter((script): script is RegexScriptLike => script !== null);
 }
 
 export function getChatArchiveFilterCharacterId(
@@ -483,4 +503,75 @@ function normalizeGreetingIndex(
   }
 
   return greetingIndex;
+}
+
+function readRegexScriptArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is Record<string, unknown> =>
+      typeof item === "object" && item !== null,
+  );
+}
+
+function normalizeCharacterRegexScript(
+  record: Record<string, unknown>,
+  index: number,
+): RegexScriptLike | null {
+  const findRegex = firstString(record.findRegex, record.regex);
+  const replaceString = firstString(record.replaceString, record.replacement);
+
+  if (!findRegex && !replaceString && typeof record.scriptName !== "string") {
+    return null;
+  }
+
+  return {
+    ...record,
+    id: typeof record.id === "string" ? record.id : undefined,
+    scriptName:
+      firstString(record.scriptName, record.name) ?? `character regex #${index + 1}`,
+    findRegex: findRegex ?? "",
+    replaceString: replaceString ?? "",
+    trimStrings: Array.isArray(record.trimStrings)
+      ? record.trimStrings.filter((item): item is string => typeof item === "string")
+      : undefined,
+    placement: Array.isArray(record.placement)
+      ? record.placement.filter((item): item is number => typeof item === "number")
+      : undefined,
+    disabled:
+      record.disabled === true ||
+      record.enabled === false ||
+      record.isEnabled === false,
+    markdownOnly: record.markdownOnly === true,
+    promptOnly: record.promptOnly === true,
+    runOnEdit: record.runOnEdit === true,
+    substituteRegex:
+      typeof record.substituteRegex === "number" ? record.substituteRegex : undefined,
+    minDepth:
+      typeof record.minDepth === "number" || record.minDepth === null
+        ? record.minDepth
+        : undefined,
+    maxDepth:
+      typeof record.maxDepth === "number" || record.maxDepth === null
+        ? record.maxDepth
+        : undefined,
+  };
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+
+  return undefined;
 }

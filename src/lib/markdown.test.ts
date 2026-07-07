@@ -99,7 +99,17 @@ describe("markdown", () => {
     expect(srcDoc).toContain("viewport");
     expect(srcDoc).toContain("my-silly-html-card");
     expect(srcDoc).toContain("test-card");
-    expect(srcDoc).not.toContain("onload");
-    expect(srcDoc).not.toContain("alert(1)");
+    expect(srcDoc).toContain("onload");
+    expect(srcDoc).toContain("alert(1)");
+  });
+
+  it("renders plain status-bar lines as a status panel fallback", () => {
+    const html = renderSafeMarkdownToHtml(
+      '状态栏: 日期和时间: "2158纪-午后" 地点: "空间站"',
+    );
+
+    expect(html).toContain('class="ms-status-panel"');
+    expect(html).toContain("状态栏");
+    expect(html).toContain("2158纪-午后");
   });
 });

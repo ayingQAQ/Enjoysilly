@@ -105,6 +105,7 @@ import {
   minimalPresetOptionId,
   normalizeName,
   appendQuickReplyToInput,
+  extractCharacterRegexScripts,
   extractWorldInfoEntries,
   resolveDefaultWorldInfoEntries,
   selectChatCharacterPayload,
@@ -237,8 +238,11 @@ export function ChatScreen() {
     messageCount: messages.length,
   });
   const activeRegexScripts = useMemo(
-    () => extractRegexScripts(activePreset),
-    [activePreset],
+    () => [
+      ...extractRegexScripts(activePreset),
+      ...extractCharacterRegexScripts(activeCharacter),
+    ],
+    [activeCharacter, activePreset],
   );
   const visibleQrSets = useMemo(
     () => selectVisibleQuickReplySets(qrSets, defaultQuickReplySetId),
@@ -1405,6 +1409,7 @@ export function ChatScreen() {
                   <ChatBubble
                     key={`${message.name}-${index}`}
                     disabled={isStreaming || isImportingChat}
+                    displayRegexScripts={activeRegexScripts}
                     message={message}
                     onDelete={() => handleDeleteMessage(index)}
                     onEdit={() => handleEditMessage(index)}

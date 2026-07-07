@@ -212,6 +212,37 @@ button {
   overflow-wrap: anywhere;
 }
 
+.chat-markdown .ms-status-panel {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.7rem 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-soft));
+  border-radius: 0.85rem;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent-weak) 70%, var(--surface) 30%),
+      color-mix(in srgb, var(--surface-muted) 78%, var(--surface) 22%)
+    );
+  padding: 0.8rem 0.9rem;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28);
+}
+
+.chat-markdown .ms-status-title {
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.chat-markdown .ms-status-body {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .chat-markdown blockquote {
   border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
   padding-left: 0.8rem;

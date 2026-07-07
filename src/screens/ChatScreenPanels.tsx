@@ -22,6 +22,10 @@ import {
   renderSafeMarkdownToHtml,
 } from "../lib/markdown";
 import { estimateTextTokens } from "../lib/tokenEstimate";
+import {
+  executeRegexScripts,
+  type RegexScriptLike,
+} from "../lib/regexEngine";
 import type { CharacterDetailSummary } from "../services/characterDetails";
 import type { ChatArchiveSummary } from "../services/chatArchive";
 import type { PresetDetailSummary } from "../services/presetDetails";
@@ -36,6 +40,21 @@ export type ChatHtmlCardAction = {
   text: string;
 };
 
+function applyDisplayRegex(
+  content: string,
+  scripts: RegexScriptLike[],
+  options: { placement: number },
+): string {
+  if (!content || scripts.length === 0) {
+    return content;
+  }
+
+  return executeRegexScripts(content, scripts, {
+    placement: options.placement,
+    promptOnly: false,
+  }).text;
+}
+
 export function ChatBubble({
   disabled,
   message,
@@ -45,8 +64,10 @@ export function ChatBubble({
   onSwipeNext,
   onSwipePrevious,
   onHtmlCardAction,
+  displayRegexScripts = [],
 }: {
   disabled: boolean;
+  displayRegexScripts?: RegexScriptLike[];
   message: ChatMessageLine;
   onDelete: () => void;
   onEdit: () => void;
@@ -57,7 +78,10 @@ export function ChatBubble({
 }) {
   const isUser = message.is_user === true;
   const canReroll = message.is_user !== true && message.is_system !== true;
-  const content = getChatMessageDisplayText(message);
+  const originalContent = getChatMessageDisplayText(message);
+  const content = applyDisplayRegex(originalContent, displayRegexScripts, {
+    placement: isUser ? 1 : 2,
+  });
   const shouldRenderHtmlDocument = isRenderableHtmlDocumentMessage(content);
   const contentHtml = shouldRenderHtmlDocument ? "" : renderSafeMarkdownToHtml(content);
   const estimatedTokens = estimateTextTokens(content);

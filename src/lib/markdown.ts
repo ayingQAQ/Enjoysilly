@@ -81,7 +81,7 @@ export function renderSafeMarkdownToHtml(markdown: string): string {
     return sanitizeChatHtml(stripHtmlDocumentShell(source));
   }
 
-  const rawHtml = marked.parse(source, {
+  const rawHtml = marked.parse(enhancePlainStatusBars(source), {
     async: false,
     breaks: true,
     gfm: true,
@@ -100,42 +100,7 @@ export function isRenderableHtmlDocumentMessage(markdown: string): boolean {
 
 export function renderSafeHtmlDocumentToSrcDoc(markdown: string, bridgeId?: string): string {
   const source = unwrapRenderableHtmlFence(markdown);
-  const cleanedDocument = DOMPurify.sanitize(stripExecutableHtml(source), {
-    ADD_TAGS: ["style"],
-    ADD_ATTR: [
-      "alt",
-      "aria-label",
-      "charset",
-      "class",
-      "content",
-      "data-ms-action",
-      "data-ms-text",
-      "height",
-      "href",
-      "lang",
-      "name",
-      "rel",
-      "src",
-      "style",
-      "title",
-      "type",
-      "width",
-    ],
-    FORBID_TAGS: [
-      "base",
-      "button",
-      "embed",
-      "form",
-      "iframe",
-      "input",
-      "link",
-      "object",
-      "script",
-      "select",
-      "textarea",
-    ],
-    WHOLE_DOCUMENT: true,
-  });
+  const cleanedDocument = prepareTrustedLocalHtmlDocument(source);
 
   return ensureIframeDocumentScaffold(cleanedDocument, bridgeId);
 }
@@ -210,6 +175,23 @@ function sanitizeInlineStyleAttributes(html: string): string {
   );
 }
 
+function enhancePlainStatusBars(markdown: string): string {
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(/^(\s*)状态栏[：:]\s*(.+)$/);
+      if (!match) {
+        return line;
+      }
+
+      const indent = match[1] ?? "";
+      const body = match[2] ?? "";
+
+      return `${indent}<section class="ms-status-panel"><div class="ms-status-title">状态栏</div><div class="ms-status-body">${escapeHtmlText(body)}</div></section>`;
+    })
+    .join("\n");
+}
+
 function sanitizeInlineStyle(style: string): string {
   const declarations = style
     .split(";")
@@ -248,11 +230,16 @@ function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
-function stripExecutableHtml(html: string): string {
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function prepareTrustedLocalHtmlDocument(html: string): string {
   return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*')/gi, "")
+    .replace(/<base\b[^>]*>/gi, "")
     .replace(/\s(?:href|src)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, "");
 }
 
