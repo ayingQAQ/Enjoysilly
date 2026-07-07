@@ -9,7 +9,8 @@ import {
   type PresetAssetSummary,
 } from "../services/assetCatalog";
 import { saveChatSnapshotToDatabase } from "../services/chatPersistence";
-import { loadAppSettings, loadUserPersonas, selectDefaultPersona } from "../services/settingsStore";
+import { loadAppSettings, loadLocalProfiles, loadUserPersonas, selectActiveLocalProfile, selectDefaultPersona } from "../services/settingsStore";
+import { serializeChatBindingToMetadata } from "../types/localProfile";
 import { getWorldInfo } from "../lib/db";
 import type { WorldInfoScanInputEntry } from "../lib/worldInfoScan";
 import { resolveDefaultWorldInfoEntries } from "./chatScreenHelpers";
@@ -53,11 +54,25 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
   const [worldInfoEntries, setWorldInfoEntries] = useState<WorldInfoScanInputEntry[] | undefined>(
     undefined,
   );
+  const [defaultWorldId, setDefaultWorldId] = useState<string | undefined>(undefined);
+  const [activePersonaId, setActivePersonaId] = useState<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
 
   const fallbackPreset = useMemo(() => createMinimalChatPreset(), []);
   const activePreset = presetDetail?.stored.payload ?? fallbackPreset;
   const activeRegexScripts = useMemo(() => extractRegexScripts(activePreset), [activePreset]);
+  const chatBinding = useMemo(
+    () => ({
+      presetId: selectedPresetId || undefined,
+      worldIds: defaultWorldId ? [defaultWorldId] : [],
+      regexSourceIds: activeRegexScripts
+        .map((s) => s.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+      quickReplySetIds: [],
+      personaId: activePersonaId,
+    }),
+    [selectedPresetId, defaultWorldId, activeRegexScripts, activePersonaId],
+  );
   const groupMembers = useMemo(
     () => normalizeGroupMembers(groupDetail?.stored.payload.members ?? []),
     [groupDetail],
@@ -114,23 +129,34 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([loadAppSettings(), loadUserPersonas()])
-      .then(async ([settings, personas]) => {
+    Promise.all([loadAppSettings(), loadUserPersonas(), loadLocalProfiles()])
+      .then(async ([settings, personas, profiles]) => {
         if (!active) return;
         const persona = selectDefaultPersona(personas);
         setBaseUrl(settings.api.baseUrl);
         setModel(settings.api.model);
         if (settings.api.apiKey) setApiKey(settings.api.apiKey);
         setUserName(persona.name);
-        if (settings.defaultPresetId && !selectedPresetId) {
-          setSelectedPresetId(settings.defaultPresetId);
+        setActivePersonaId(persona.id);
+
+        // 工作区配置优先，设置默认值兜底
+        const profile = selectActiveLocalProfile(profiles, settings.activeProfileId);
+        const resolvedPresetId = profile.presetId ?? settings.defaultPresetId;
+        if (resolvedPresetId && !selectedPresetId) {
+          setSelectedPresetId(resolvedPresetId);
         }
-        if (settings.defaultWorldId) {
+
+        const resolvedWorldId = profile.worldIds.length > 0
+          ? profile.worldIds[0]
+          : settings.defaultWorldId;
+        setDefaultWorldId(resolvedWorldId);
+
+        if (resolvedWorldId) {
           try {
-            const world = await getWorldInfo(settings.defaultWorldId);
+            const world = await getWorldInfo(resolvedWorldId);
             if (active) {
               setWorldInfoEntries(
-                resolveDefaultWorldInfoEntries(settings.defaultWorldId, world ?? null),
+                resolveDefaultWorldInfoEntries(resolvedWorldId, world ?? null),
               );
             }
           } catch {
@@ -226,12 +252,13 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
         userName: normalizeName(userName, defaultUserName),
         characterName: charName,
         groupId: selectedGroupId || undefined,
+        chatMetadata: serializeChatBindingToMetadata(chatBinding),
       });
       setStatusText("已保存");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [messages, userName, speakerCard, selectedGroupId]);
+  }, [messages, userName, speakerCard, selectedGroupId, chatBinding]);
 
   const tokenCount = useMemo(() => estimateChatMessagesTokens(messages), [messages]);
 

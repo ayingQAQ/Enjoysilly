@@ -682,3 +682,118 @@ describe("selectVisibleQuickReplySets", () => {
     expect(selectVisibleQuickReplySets(allSets, "qr-nonexistent")).toEqual(allSets);
   });
 });
+
+describe("ChatBindingSnapshot round-trip", () => {
+  const baseInput = {
+    activeCharacter: {
+      spec: "chara_card_v2",
+      spec_version: "2.0",
+      data: { name: "测试角色" },
+    } as Parameters<typeof createChatSaveSnapshotInput>[0]["activeCharacter"],
+    messages: [
+      {
+        name: "User",
+        is_user: true,
+        mes: "你好",
+      },
+    ] as ChatMessageLine[],
+    selectedCharacterId: "char-1",
+    userName: "User",
+  };
+
+  it("writes binding snapshot into chatMetadata when provided", () => {
+    const result = createChatSaveSnapshotInput({
+      ...baseInput,
+      binding: {
+        presetId: "preset-1",
+        worldIds: ["world-1"],
+        regexSourceIds: ["preset-1:regex:0"],
+        quickReplySetIds: ["qr-1"],
+        personaId: "persona-1",
+      },
+    });
+
+    expect(result.chatMetadata).toBeDefined();
+    const meta = result.chatMetadata as Record<string, unknown>;
+    expect(meta.presetId).toBe("preset-1");
+    expect(meta.worldIds).toEqual(["world-1"]);
+    expect(meta.quickReplySetIds).toEqual(["qr-1"]);
+    expect(meta.personaId).toBe("persona-1");
+    expect(meta._ms_regexSourceIds).toEqual(["preset-1:regex:0"]);
+    expect(meta._ms_bindingVersion).toBe(1);
+  });
+
+  it("omits empty binding arrays and undefined fields", () => {
+    const result = createChatSaveSnapshotInput({
+      ...baseInput,
+      binding: {
+        worldIds: [],
+        regexSourceIds: [],
+        quickReplySetIds: [],
+      },
+    });
+
+    expect(result.chatMetadata).toBeDefined();
+    const meta = result.chatMetadata as Record<string, unknown>;
+    expect(meta.presetId).toBeUndefined();
+    expect(meta.worldIds).toBeUndefined();
+    expect(meta.personaId).toBeUndefined();
+    expect(meta._ms_bindingVersion).toBe(1);
+  });
+
+  it("extracts binding snapshot from chatMetadata round-trip", async () => {
+    const { extractChatBindingFromMetadata } = await import("../types/localProfile");
+    const { serializeChatBindingToMetadata } = await import("../types/localProfile");
+
+    const original = {
+      presetId: "preset-1",
+      worldIds: ["world-1", "world-2"],
+      regexSourceIds: ["regex-1"],
+      quickReplySetIds: ["qr-1"],
+      personaId: "persona-1",
+    };
+
+    const serialized = serializeChatBindingToMetadata(original);
+    const extracted = extractChatBindingFromMetadata(serialized);
+
+    expect(extracted).toEqual(original);
+  });
+
+  it("extracts binding snapshot tolerates missing fields", async () => {
+    const { extractChatBindingFromMetadata } = await import("../types/localProfile");
+
+    const extracted = extractChatBindingFromMetadata(undefined);
+    expect(extracted).toEqual({
+      worldIds: [],
+      regexSourceIds: [],
+      quickReplySetIds: [],
+    });
+  });
+
+  it("merges binding into existing imported chatMetadata", () => {
+    const result = createChatSaveSnapshotInput({
+      ...baseInput,
+      chatMetadata: {
+        user_name: "OldUser",
+        character_name: "OldChar",
+        chat_metadata: {
+          customField: "keep-me",
+        },
+      },
+      binding: {
+        presetId: "preset-2",
+        worldIds: ["world-2"],
+        regexSourceIds: [],
+        quickReplySetIds: [],
+      },
+    });
+
+    expect(result.metadata).toBeDefined();
+    expect(result.metadata!.user_name).toBe("OldUser");
+    expect(result.metadata!.character_name).toBe("OldChar");
+    const meta = result.chatMetadata as Record<string, unknown>;
+    expect(meta.customField).toBe("keep-me");
+    expect(meta.presetId).toBe("preset-2");
+    expect(meta.worldIds).toEqual(["world-2"]);
+  });
+});

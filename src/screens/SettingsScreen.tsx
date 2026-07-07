@@ -15,14 +15,19 @@ import { applyAppAppearance } from "../services/appAppearance";
 import {
   defaultApiBaseUrl,
   defaultApiModel,
+  deleteLocalProfile,
   loadAppSettings,
+  loadLocalProfiles,
   loadUserPersonas,
   saveAppSettings,
+  saveLocalProfile,
   saveUserPersonas,
+  selectActiveLocalProfile,
   selectDefaultPersona,
 } from "../services/settingsStore";
 import { listQuickReplySets, type StoredQuickReplySet } from "../lib/db";
 import type { AppFontScale, AppSettings, AppTheme, UserPersona } from "../types/settings";
+import type { LocalProfile } from "../types/localProfile";
 
 interface SettingsFormState {
   baseUrl: string;
@@ -33,6 +38,7 @@ interface SettingsFormState {
   defaultPresetId: string;
   defaultWorldId: string;
   defaultQuickReplySetId: string;
+  activeProfileId: string;
   theme: AppTheme;
   fontScale: AppFontScale;
 }
@@ -54,6 +60,7 @@ export function SettingsScreen() {
   const [isExporting, setIsExporting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<LocalProfile[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const restoreInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,12 +78,13 @@ export function SettingsScreen() {
     setError(null);
 
     try {
-      const [settings, personas, presetList, worldList, quickReplyList] = await Promise.all([
+      const [settings, personas, presetList, worldList, quickReplyList, profileList] = await Promise.all([
         loadAppSettings(),
         loadUserPersonas(),
         loadPresetAssetSummaries(),
         loadWorldInfoAssetSummaries(),
         listQuickReplySets(),
+        loadLocalProfiles(),
       ]);
       const persona = selectDefaultPersona(personas);
 
@@ -85,6 +93,7 @@ export function SettingsScreen() {
       setPresets(presetList);
       setWorlds(worldList);
       setQuickReplySets(quickReplyList);
+      setProfiles(profileList);
       setForm(createFormState(settings, persona, {
         presetIds: presetList.map((preset) => preset.id),
         worldIds: worldList.map((world) => world.id),
@@ -217,6 +226,45 @@ export function SettingsScreen() {
     }
   }, [refresh]);
 
+  const handleSelectProfile = useCallback((profileId: string) => {
+    updateField("activeProfileId", profileId);
+    const profile = profiles.find((p) => p.id === profileId);
+    if (profile) {
+      if (profile.presetId) updateField("defaultPresetId", profile.presetId);
+      if (profile.worldIds.length > 0) updateField("defaultWorldId", profile.worldIds[0]);
+      if (profile.quickReplySetIds.length > 0) updateField("defaultQuickReplySetId", profile.quickReplySetIds[0]);
+    }
+  }, [profiles, updateField]);
+
+  const handleCreateProfile = useCallback(async () => {
+    const name = window.prompt("工作区名称：", "新建工作区")?.trim();
+    if (!name) return;
+
+    const updated = await saveLocalProfile({
+      id: `profile_${crypto.randomUUID().slice(0, 8)}`,
+      name,
+      presetId: optionalId(form.defaultPresetId),
+      worldIds: optionalId(form.defaultWorldId) ? [optionalId(form.defaultWorldId)!] : [],
+      regexScriptIds: [],
+      quickReplySetIds: optionalId(form.defaultQuickReplySetId) ? [optionalId(form.defaultQuickReplySetId)!] : [],
+    });
+    setProfiles(updated);
+    const created = updated.find((p) => p.name === name);
+    if (created) updateField("activeProfileId", created.id);
+    setStatusText("工作区已创建。");
+  }, [form.defaultPresetId, form.defaultWorldId, form.defaultQuickReplySetId, updateField]);
+
+  const handleDeleteProfile = useCallback(async () => {
+    const activeProfile = profiles.find((p) => p.id === form.activeProfileId);
+    if (!activeProfile) return;
+    if (!window.confirm(`删除工作区"${activeProfile.name}"？不会删除其中的资产。`)) return;
+
+    const updated = await deleteLocalProfile(form.activeProfileId);
+    setProfiles(updated);
+    updateField("activeProfileId", "");
+    setStatusText("工作区已删除。");
+  }, [form.activeProfileId, profiles, updateField]);
+
   const handleSave = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
@@ -232,6 +280,7 @@ export function SettingsScreen() {
         defaultPresetId: optionalId(form.defaultPresetId),
         defaultWorldId: optionalId(form.defaultWorldId),
         defaultQuickReplySetId: optionalId(form.defaultQuickReplySetId),
+        activeProfileId: optionalId(form.activeProfileId),
         theme: form.theme,
         fontScale: form.fontScale,
       };
@@ -391,8 +440,40 @@ export function SettingsScreen() {
         <aside className="space-y-5">
           <SettingsPanel
             icon={<Save size={18} />}
+            title="工作区配置"
+            subtitle="将当前默认资产保存为可命名的工作区，方便快速切换不同场景的预设/世界书/快捷回复组合。"
+          >
+            <SelectField
+              label="当前工作区"
+              value={form.activeProfileId}
+              onChange={(value) => handleSelectProfile(value)}
+              options={profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              emptyLabel="不使用工作区"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-sm font-medium transition hover:border-[var(--border-strong)]"
+                type="button"
+                onClick={() => void handleCreateProfile()}
+              >
+                <Save size={14} /> 新建工作区
+              </button>
+              {form.activeProfileId ? (
+                <button
+                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 transition hover:bg-red-50"
+                  type="button"
+                  onClick={() => void handleDeleteProfile()}
+                >
+                  <X size={14} /> 删除
+                </button>
+              ) : null}
+            </div>
+          </SettingsPanel>
+
+          <SettingsPanel
+            icon={<Save size={18} />}
             title="默认资产"
-            subtitle="保存默认预设、世界书、快捷回复集；聊天页面初始化时会读取这些默认值。"
+            subtitle="未使用工作区时的默认值，或作为工作区配置的基础。"
           >
             <SelectField
               label="默认预设"
@@ -542,6 +623,7 @@ function createFormState(
       settings.defaultQuickReplySetId,
       availableIds?.quickReplySetIds,
     ),
+    activeProfileId: settings.activeProfileId ?? "",
     theme: settings.theme,
     fontScale: settings.fontScale,
   };

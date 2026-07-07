@@ -99,7 +99,11 @@ function createChatMetadata(
   }
 
   if (input.chatMetadata) {
-    metadata.chat_metadata = cloneUnknownRecord(input.chatMetadata);
+    // 合并而非覆盖：保留已导入的 chat_metadata 字段，叠加新传入的值
+    metadata.chat_metadata = {
+      ...cloneUnknownRecord(metadata.chat_metadata ?? {}),
+      ...cloneUnknownRecord(input.chatMetadata),
+    };
   }
 
   return metadata;

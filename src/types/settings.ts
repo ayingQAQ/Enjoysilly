@@ -21,6 +21,7 @@ export interface AppSettings extends PreserveUnknownFields {
   defaultPresetId?: string;
   defaultWorldId?: string;
   defaultQuickReplySetId?: string;
+  activeProfileId?: string;
   theme: AppTheme;
   fontScale: AppFontScale;
 }

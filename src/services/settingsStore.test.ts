@@ -14,12 +14,16 @@ import {
   defaultApiBaseUrl,
   defaultApiModel,
   defaultPersonaName,
+  deleteLocalProfile,
   loadApiConnectionSettings,
   loadAppSettings,
+  loadLocalProfiles,
   loadUserPersonas,
   saveApiConnectionSettings,
   saveAppSettings,
+  saveLocalProfile,
   saveUserPersonas,
+  selectActiveLocalProfile,
   selectDefaultPersona,
   userPersonasKey,
 } from "./settingsStore";
@@ -226,6 +230,123 @@ describe("settingsStore", () => {
       expect.objectContaining({ id: "persona-b", isDefault: false }),
     ]);
     expect(selectDefaultPersona(saved).id).toBe("persona-a");
+
+    database.close();
+  });
+
+  it("returns a default profile from an empty database", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+
+    const profiles = await loadLocalProfiles(database);
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]).toMatchObject({
+      id: "profile_default",
+      name: "默认工作区",
+      worldIds: [],
+      regexScriptIds: [],
+      quickReplySetIds: [],
+    });
+
+    database.close();
+  });
+
+  it("saves, updates, and deletes local profiles without corrupting other settings", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = new Date("2026-07-07T12:00:00.000Z");
+
+    // 先保存一些其他设置
+    await saveAppSettings(
+      {
+        api: { baseUrl: defaultApiBaseUrl, apiKey: "", model: defaultApiModel },
+        theme: "light",
+        fontScale: "sm",
+      },
+      { database },
+    );
+
+    // 保存 profile
+    const updated1 = await saveLocalProfile(
+      {
+        id: "profile-1",
+        name: "  红楼梦会话  ",
+        characterId: "char-1",
+        presetId: "preset-1",
+        worldIds: ["world-1", "world-2"],
+        regexScriptIds: ["regex-1"],
+        quickReplySetIds: [],
+        personaId: "persona-1",
+      },
+      { database, now },
+    );
+    expect(updated1).toHaveLength(2); // default + new
+    const saved = updated1.find((p) => p.id === "profile-1")!;
+    expect(saved.name).toBe("红楼梦会话");
+    expect(saved.worldIds).toEqual(["world-1", "world-2"]);
+
+    // 更新
+    const updated2 = await saveLocalProfile(
+      {
+        ...saved,
+        name: "红楼梦 v2",
+        worldIds: ["world-1"],
+      },
+      { database, now },
+    );
+    expect(updated2.find((p) => p.id === "profile-1")?.name).toBe("红楼梦 v2");
+    expect(updated2.find((p) => p.id === "profile-1")?.worldIds).toEqual(["world-1"]);
+
+    // 删除
+    const updated3 = await deleteLocalProfile("profile-1", { database, now });
+    expect(updated3).toHaveLength(1);
+    expect(updated3[0].id).toBe("profile_default");
+
+    // 不影响 appSettings
+    await expect(loadAppSettings(database)).resolves.toMatchObject({ theme: "light" });
+
+    database.close();
+  });
+
+  it("selects the active profile by id with fallback", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = new Date("2026-07-07T12:00:00.000Z");
+
+    const profiles = await saveLocalProfile(
+      {
+        id: "profile-a",
+        name: "A",
+        worldIds: [],
+        regexScriptIds: [],
+        quickReplySetIds: [],
+      },
+      { database, now },
+    );
+
+    expect(selectActiveLocalProfile(profiles, "profile-a").name).toBe("A");
+    expect(selectActiveLocalProfile(profiles, "nonexistent").name).toBe("默认工作区");
+    expect(selectActiveLocalProfile(profiles, undefined).name).toBe("默认工作区");
+
+    database.close();
+  });
+
+  it("filters out invalid ids from profile arrays", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const now = new Date("2026-07-07T12:00:00.000Z");
+
+    const profiles = await saveLocalProfile(
+      {
+        id: "dirty",
+        name: "脏数据",
+        worldIds: ["good", "", "  ", 123 as unknown as string, null as unknown as string],
+        regexScriptIds: [{ notAString: true } as unknown as string],
+        quickReplySetIds: ["qr-1"],
+      },
+      { database, now },
+    );
+
+    const saved = profiles.find((p) => p.id === "dirty")!;
+    expect(saved.worldIds).toEqual(["good"]);
+    expect(saved.regexScriptIds).toEqual([]);
+    expect(saved.quickReplySetIds).toEqual(["qr-1"]);
 
     database.close();
   });

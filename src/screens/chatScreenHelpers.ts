@@ -14,6 +14,8 @@ import type {
 } from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
+import type { ChatBindingSnapshot } from "../types/localProfile";
+import { serializeChatBindingToMetadata } from "../types/localProfile";
 
 export const localCharacterOptionId = "__local_character__";
 export const minimalPresetOptionId = "__minimal_preset__";
@@ -275,6 +277,7 @@ export function createChatSaveSnapshotInput(input: {
   messages: ChatMessageLine[];
   selectedCharacterId: string;
   userName: string;
+  binding?: ChatBindingSnapshot;
 }): SaveChatSnapshotToDatabaseInput {
   const snapshotInput: SaveChatSnapshotToDatabaseInput = {
     messages: input.messages,
@@ -291,6 +294,21 @@ export function createChatSaveSnapshotInput(input: {
 
   if (input.chatMetadata) {
     snapshotInput.metadata = cloneChatMetadata(input.chatMetadata);
+  }
+
+  if (input.binding) {
+    // 从导入的 metadata.chat_metadata 中继承已有字段，再叠加 binding
+    const existing: Record<string, unknown> =
+      snapshotInput.metadata?.chat_metadata != null
+        ? { ...(snapshotInput.metadata.chat_metadata as Record<string, unknown>) }
+        : snapshotInput.chatMetadata != null
+          ? { ...(snapshotInput.chatMetadata as Record<string, unknown>) }
+          : {};
+
+    snapshotInput.chatMetadata = {
+      ...existing,
+      ...serializeChatBindingToMetadata(input.binding),
+    };
   }
 
   return snapshotInput;

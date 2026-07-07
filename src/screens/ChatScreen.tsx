@@ -48,7 +48,7 @@ import {
 import {
   saveChatSnapshotToDatabase,
 } from "../services/chatPersistence";
-import { loadAppSettings, loadUserPersonas, selectDefaultPersona } from "../services/settingsStore";
+import { loadAppSettings, loadLocalProfiles, loadUserPersonas, selectActiveLocalProfile, selectDefaultPersona } from "../services/settingsStore";
 import { importChatToDatabase } from "../services/chatImport";
 import {
   deleteChatArchive,
@@ -170,6 +170,9 @@ export function ChatScreen() {
   const [defaultQuickReplySetId, setDefaultQuickReplySetId] = useState<string | undefined>(
     undefined,
   );
+  const [defaultWorldId, setDefaultWorldId] = useState<string | undefined>(undefined);
+  const [activePersonaId, setActivePersonaId] = useState<string | undefined>(undefined);
+  const [activeProfileId, setActiveProfileId] = useState<string | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | null>(null);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
   const lastAutoGreetingCharacterIdRef = useRef<string | null>(null);
@@ -247,6 +250,29 @@ export function ChatScreen() {
   const visibleQrSets = useMemo(
     () => selectVisibleQuickReplySets(qrSets, defaultQuickReplySetId),
     [qrSets, defaultQuickReplySetId],
+  );
+  const chatBinding = useMemo(
+    () => ({
+      presetId:
+        selectedPresetId === minimalPresetOptionId
+          ? undefined
+          : selectedPresetId,
+      worldIds: defaultWorldId ? [defaultWorldId] : [],
+      regexSourceIds: activeRegexScripts
+        .map((script) => script.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+      quickReplySetIds: visibleQrSets
+        .map((set) => set.id)
+        .filter(Boolean),
+      personaId: activePersonaId,
+    }),
+    [
+      selectedPresetId,
+      defaultWorldId,
+      activeRegexScripts,
+      visibleQrSets,
+      activePersonaId,
+    ],
   );
   const estimatedTokenCount = useMemo(
     () => estimateChatMessagesTokens(messages),
@@ -342,8 +368,8 @@ export function ChatScreen() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([loadAppSettings(), loadUserPersonas()])
-      .then(async ([settings, personas]) => {
+    Promise.all([loadAppSettings(), loadUserPersonas(), loadLocalProfiles()])
+      .then(async ([settings, personas, profiles]) => {
         if (!active) return;
         const persona = selectDefaultPersona(personas);
         setBaseUrl(settings.api.baseUrl);
@@ -351,16 +377,29 @@ export function ChatScreen() {
         if (settings.api.apiKey) setApiKey(settings.api.apiKey);
         setUserName(persona.name);
         if (persona.description) setPersonaDescription(persona.description);
-        if (settings.defaultPresetId) {
-          setSelectedPresetId(settings.defaultPresetId);
-        }
-        setDefaultQuickReplySetId(settings.defaultQuickReplySetId);
-        if (settings.defaultWorldId) {
+        setActivePersonaId(persona.id);
+
+        // 工作区配置优先，设置默认值兜底
+        const profile = selectActiveLocalProfile(profiles, settings.activeProfileId);
+        setActiveProfileId(profile.id);
+        setSelectedPresetId(profile.presetId ?? settings.defaultPresetId ?? minimalPresetOptionId);
+        setDefaultQuickReplySetId(
+          profile.quickReplySetIds.length > 0
+            ? profile.quickReplySetIds[0]
+            : settings.defaultQuickReplySetId,
+        );
+
+        const resolvedWorldId = profile.worldIds.length > 0
+          ? profile.worldIds[0]
+          : settings.defaultWorldId;
+        setDefaultWorldId(resolvedWorldId);
+
+        if (resolvedWorldId) {
           try {
-            const world = await getWorldInfo(settings.defaultWorldId);
+            const world = await getWorldInfo(resolvedWorldId);
             if (active) {
               setWorldInfoEntries(
-                resolveDefaultWorldInfoEntries(settings.defaultWorldId, world ?? null),
+                resolveDefaultWorldInfoEntries(resolvedWorldId, world ?? null),
               );
             }
           } catch {
@@ -484,6 +523,7 @@ export function ChatScreen() {
           messages,
           selectedCharacterId,
           userName,
+          binding: chatBinding,
         }),
         id: loadedArchiveId ?? undefined,
         name: loadedArchiveName ?? undefined,
@@ -504,6 +544,7 @@ export function ChatScreen() {
     }
   }, [
     activeCharacter,
+    chatBinding,
     isImportingChat,
     isSaving,
     isStreaming,
@@ -764,6 +805,7 @@ export function ChatScreen() {
           messages,
           selectedCharacterId,
           userName,
+          binding: chatBinding,
         }),
       );
 
@@ -781,6 +823,7 @@ export function ChatScreen() {
     }
   }, [
     activeCharacter,
+    chatBinding,
     canSave,
     loadedChatMetadata,
     messages,
