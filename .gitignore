@@ -16,3 +16,8 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+
+test-fixtures/
+AGENTS.md
+CLAUDE.md
+plan.md
