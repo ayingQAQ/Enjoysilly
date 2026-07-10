@@ -79,8 +79,8 @@ function createPreset(
 }
 
 describe("chat runtime request preparation", () => {
-  it("prepares prompt messages and request body without sending requests", () => {
-    const prepared = prepareChatCompletionRequest({
+  it("prepares prompt messages and request body without sending requests", async () => {
+    const prepared = await prepareChatCompletionRequest({
       model: "test-model",
       preset: createPreset(),
       character: createCharacter(),
@@ -135,8 +135,8 @@ describe("chat runtime request preparation", () => {
     );
   });
 
-  it("passes group context into prompt messages", () => {
-    const prepared = prepareChatCompletionRequest({
+  it("passes group context into prompt messages", async () => {
+    const prepared = await prepareChatCompletionRequest({
       model: "test-model",
       preset: createPreset(),
       character: createCharacter(),
@@ -156,7 +156,7 @@ describe("chat runtime request preparation", () => {
     expect(prepared.requestBody.messages[0]).toEqual(prepared.messages[0]);
   });
 
-  it("scans world info once and injects before, after, and at-depth content", () => {
+  it("scans world info once and injects before, after, and at-depth content", async () => {
     const worldInfoEntries: NativeWorldInfoEntry[] = [
       {
         key: ["dragon"],
@@ -185,7 +185,7 @@ describe("chat runtime request preparation", () => {
         position: 0,
       },
     ];
-    const prepared = prepareChatCompletionRequest({
+    const prepared = await prepareChatCompletionRequest({
       model: "test-model",
       preset: createPreset([
         "worldInfoBefore",
@@ -235,8 +235,8 @@ describe("chat runtime request preparation", () => {
     expect(JSON.stringify(prepared.messages)).not.toContain("Disabled lore");
   });
 
-  it("omits empty world info markers when no entries are provided", () => {
-    const prepared = prepareChatCompletionRequest({
+  it("omits empty world info markers when no entries are provided", async () => {
+    const prepared = await prepareChatCompletionRequest({
       model: "test-model",
       preset: createPreset([
         "worldInfoBefore",
@@ -256,7 +256,7 @@ describe("chat runtime request preparation", () => {
     ]);
   });
 
-  it("does not mutate preset, character, chat messages, or world info entries", () => {
+  it("does not mutate preset, character, chat messages, or world info entries", async () => {
     const preset = createPreset(["worldInfoBefore", "chatHistory"]);
     const character = createCharacter();
     const chatMessages = [
@@ -276,7 +276,7 @@ describe("chat runtime request preparation", () => {
     const originalChatMessages = structuredClone(chatMessages);
     const originalWorldInfoEntries = structuredClone(worldInfoEntries);
 
-    prepareChatCompletionRequest({
+    await prepareChatCompletionRequest({
       model: "test-model",
       preset,
       character,

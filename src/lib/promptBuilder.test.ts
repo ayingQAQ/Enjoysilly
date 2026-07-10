@@ -123,8 +123,8 @@ function loadRealCharacterFixture(): CharacterCard {
 }
 
 describe("prompt builder", () => {
-  it("builds ordered messages from enabled prompt_order entries", () => {
-    const messages = buildChatCompletionMessages({
+  it("builds ordered messages from enabled prompt_order entries", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
@@ -153,11 +153,11 @@ describe("prompt builder", () => {
     ]);
   });
 
-  it("falls back to enabled prompt list when prompt_order has no usable slot", () => {
+  it("falls back to enabled prompt list when prompt_order has no usable slot", async () => {
     const preset = createPreset();
     preset.prompt_order = [];
 
-    const messages = buildChatCompletionMessages({
+    const messages = await buildChatCompletionMessages({
       preset,
       character: createCharacter({ nickname: "Al" }),
       userName: "Tester",
@@ -172,13 +172,13 @@ describe("prompt builder", () => {
     );
   });
 
-  it("does not mutate source preset or character payloads", () => {
+  it("does not mutate source preset or character payloads", async () => {
     const preset = createPreset();
     const character = createCharacter();
     const originalPreset = structuredClone(preset);
     const originalCharacter = structuredClone(character);
 
-    buildChatCompletionMessages({
+    await buildChatCompletionMessages({
       preset,
       character,
       userName: "Tester",
@@ -189,7 +189,7 @@ describe("prompt builder", () => {
     expect(character).toEqual(originalCharacter);
   });
 
-  it("injects scanned world info into before and after markers", () => {
+  it("injects scanned world info into before and after markers", async () => {
     const preset = createPreset();
     preset.prompt_order[0].order = [
       { identifier: "worldInfoBefore", enabled: true },
@@ -217,7 +217,7 @@ describe("prompt builder", () => {
       },
     ];
 
-    const messages = buildChatCompletionMessages({
+    const messages = await buildChatCompletionMessages({
       preset,
       character: createCharacter(),
       worldInfoEntries,
@@ -236,13 +236,13 @@ describe("prompt builder", () => {
     ]);
   });
 
-  it("keeps explicit world info strings ahead of scanned results", () => {
+  it("keeps explicit world info strings ahead of scanned results", async () => {
     const preset = createPreset();
     preset.prompt_order[0].order = [
       { identifier: "worldInfoBefore", enabled: true },
     ];
 
-    const messages = buildChatCompletionMessages({
+    const messages = await buildChatCompletionMessages({
       preset,
       character: createCharacter(),
       worldInfoBefore: "Manual world info",
@@ -264,11 +264,11 @@ describe("prompt builder", () => {
     ]);
   });
 
-  it("builds messages from real preset and character fixtures", () => {
+  it("builds messages from real preset and character fixtures", async () => {
     const preset = loadRealPresetFixture();
     const character = loadRealCharacterFixture();
 
-    const messages = buildChatCompletionMessages({
+    const messages = await buildChatCompletionMessages({
       preset,
       character,
       userName: "User",
@@ -284,8 +284,8 @@ describe("prompt builder", () => {
     expect(JSON.stringify(preset.extensions)).toContain("regex_scripts");
   });
 
-  it("applies regexScripts to assembled message contents", () => {
-    const messages = buildChatCompletionMessages({
+  it("applies regexScripts to assembled message contents", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
@@ -315,8 +315,8 @@ describe("prompt builder", () => {
     ]);
   });
 
-  it("skips disabled regex scripts during prompt building", () => {
-    const messages = buildChatCompletionMessages({
+  it("skips disabled regex scripts during prompt building", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
@@ -340,8 +340,8 @@ describe("prompt builder", () => {
     expect(messages[0].content).toBe("You are Bob talking to Tester.");
   });
 
-  it("does not apply user, AI output, or markdown-only regex scripts to prompt messages", () => {
-    const messages = buildChatCompletionMessages({
+  it("does not apply user, AI output, or markdown-only regex scripts to prompt messages", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
@@ -376,14 +376,14 @@ describe("prompt builder", () => {
     ]);
   });
 
-  it("returns unchanged messages when regexScripts is empty", () => {
-    const messagesWithoutRegex = buildChatCompletionMessages({
+  it("returns unchanged messages when regexScripts is empty", async () => {
+    const messagesWithoutRegex = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
     });
 
-    const messagesWithEmpty = buildChatCompletionMessages({
+    const messagesWithEmpty = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
@@ -393,13 +393,13 @@ describe("prompt builder", () => {
     expect(messagesWithEmpty).toEqual(messagesWithoutRegex);
   });
 
-  it("preserves source regexScripts immutability", () => {
+  it("preserves source regexScripts immutability", async () => {
     const scripts = [
       { findRegex: "Tester", replaceString: "User" },
     ];
     const originalScripts = structuredClone(scripts);
 
-    buildChatCompletionMessages({
+    await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       userName: "Tester",
@@ -409,11 +409,11 @@ describe("prompt builder", () => {
     expect(scripts).toEqual(originalScripts);
   });
 
-  it("applies real fixture regex scripts from preset extensions to prompt messages", () => {
+  it("applies real fixture regex scripts from preset extensions to prompt messages", async () => {
     const preset = loadRealPresetFixture();
     const character = loadRealCharacterFixture();
 
-    const messages = buildChatCompletionMessages({
+    const messages = await buildChatCompletionMessages({
       preset,
       character,
       userName: "User",
@@ -431,8 +431,8 @@ describe("prompt builder", () => {
     expect(JSON.stringify(preset.extensions)).toContain("regex_scripts");
   });
 
-  it("prepends group context system message with other member names", () => {
-    const messages = buildChatCompletionMessages({
+  it("prepends group context system message with other member names", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter({ name: "Alice" }),
       userName: "Tester",
@@ -445,14 +445,14 @@ describe("prompt builder", () => {
     expect(messages[0].content).toBe("[测试群成员：Bob、Charlie]");
   });
 
-  it("does not prepend group context when there is only one member", () => {
-    const withoutGroup = buildChatCompletionMessages({
+  it("does not prepend group context when there is only one member", async () => {
+    const withoutGroup = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter({ name: "Alice" }),
       userName: "Tester",
     });
 
-    const withOneMember = buildChatCompletionMessages({
+    const withOneMember = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter({ name: "Alice" }),
       userName: "Tester",
@@ -462,8 +462,8 @@ describe("prompt builder", () => {
     expect(withOneMember.length).toBe(withoutGroup.length);
   });
 
-  it("uses default group label when groupName is omitted", () => {
-    const messages = buildChatCompletionMessages({
+  it("uses default group label when groupName is omitted", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter({ name: "Alice" }),
       userName: "Tester",
@@ -473,8 +473,8 @@ describe("prompt builder", () => {
     expect(messages[0].content).toBe("[群组成员：Bob]");
   });
 
-  it("uses character ids to exclude only the active speaker in group context", () => {
-    const messages = buildChatCompletionMessages({
+  it("uses character ids to exclude only the active speaker in group context", async () => {
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter({ name: "Alice" }),
       userName: "Tester",

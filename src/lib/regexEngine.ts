@@ -420,6 +420,15 @@ function makeRegex(v) {
   }
   return new RegExp(v, "gm");
 }
+function isLB(v) { return v === "\\n" || v === "\\r" || v === "\\r\\n"; }
+function startsStripped(v, trim) {
+  var stripped = v.replace(/^[\\r\\n]+/, "");
+  return stripped !== v || v.startsWith(trim);
+}
+function endsStripped(v, trim) {
+  var stripped = v.replace(/[\\r\\n]+$/, "");
+  return stripped !== v || v.endsWith(trim);
+}
 function e(t, s) {
   if (typeof s.findRegex !== "string" || typeof s.replaceString !== "string") return { text: t };
   if (s.findRegex.length === 0) return { text: t };
@@ -436,8 +445,8 @@ function e(t, s) {
         for (var i = 0; i < s.trimStrings.length; i++) {
           var trim = s.trimStrings[i];
           if (trim.length === 0) continue;
-          while (rep.startsWith(trim)) rep = rep.slice(trim.length);
-          while (rep.endsWith(trim)) rep = rep.slice(0, rep.length - trim.length);
+          while (isLB(trim) ? startsStripped(rep, trim) : rep.startsWith(trim)) rep = rep.slice(trim.length);
+          while (isLB(trim) ? endsStripped(rep, trim) : rep.endsWith(trim)) rep = rep.slice(0, rep.length - trim.length);
         }
       }
       return rep;

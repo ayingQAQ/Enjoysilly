@@ -1,11 +1,10 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
-  type SyntheticEvent,
 } from "react";
 import {
   FileJson2,
@@ -23,7 +22,7 @@ import {
 } from "../lib/markdown";
 import { estimateTextTokens } from "../lib/tokenEstimate";
 import {
-  executeRegexScripts,
+  executeRegexScriptsAsync,
   type RegexScriptLike,
 } from "../lib/regexEngine";
 import type { CharacterDetailSummary } from "../services/characterDetails";
@@ -40,19 +39,54 @@ export type ChatHtmlCardAction = {
   text: string;
 };
 
-function applyDisplayRegex(
-  content: string,
+/**
+ * 异步执行显示正则：走 worker + timeout，超时或报错回退原文。
+ * 抽取为独立 hook 避免在 React render 中执行同步正则。
+ */
+function useDisplayRegexText(
+  originalContent: string,
   scripts: RegexScriptLike[],
-  options: { placement: number },
+  placement: number,
 ): string {
-  if (!content || scripts.length === 0) {
-    return content;
-  }
+  const [result, setResult] = useState(originalContent);
+  // 用 ref 追踪最新的原文，避免 effect cleanup 后写入过时结果
+  const latestContentRef = useRef(originalContent);
 
-  return executeRegexScripts(content, scripts, {
-    placement: options.placement,
-    promptOnly: false,
-  }).text;
+  useEffect(() => {
+    latestContentRef.current = originalContent;
+
+    // 先立即显示原文（编辑等场景下即时响应）
+    setResult(originalContent);
+
+    if (!originalContent || scripts.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const currentContent = originalContent;
+
+    executeRegexScriptsAsync(currentContent, scripts, {
+      placement,
+      promptOnly: false,
+    })
+      .then((regexResult) => {
+        if (cancelled) return;
+        // 如果原文在此期间已变化，丢弃过期结果
+        if (latestContentRef.current !== currentContent) return;
+        setResult(regexResult.text);
+      })
+      .catch(() => {
+        if (!cancelled && latestContentRef.current === currentContent) {
+          setResult(currentContent);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [originalContent, scripts, placement]);
+
+  return result;
 }
 
 export function ChatBubble({
@@ -79,14 +113,56 @@ export function ChatBubble({
   const isUser = message.is_user === true;
   const canReroll = message.is_user !== true && message.is_system !== true;
   const originalContent = getChatMessageDisplayText(message);
-  const content = applyDisplayRegex(originalContent, displayRegexScripts, {
-    placement: isUser ? 1 : 2,
-  });
+  const content = useDisplayRegexText(
+    originalContent,
+    displayRegexScripts,
+    isUser ? 1 : 2,
+  );
   const shouldRenderHtmlDocument = isRenderableHtmlDocumentMessage(content);
   const contentHtml = shouldRenderHtmlDocument ? "" : renderSafeMarkdownToHtml(content);
   const estimatedTokens = estimateTextTokens(content);
   const swipeCount = getMessageSwipeCount(message);
   const swipeIndex = normalizeMessageSwipeIndex(message);
+
+  const handleContentClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!onHtmlCardAction) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const actionElement = target.closest<HTMLElement>("[data-ms-action]");
+      if (!actionElement) {
+        return;
+      }
+
+      const action = actionElement.dataset.msAction;
+      if (
+        action !== "setDraft" &&
+        action !== "appendDraft" &&
+        action !== "sendMessage"
+      ) {
+        return;
+      }
+
+      const text =
+        actionElement.dataset.msText?.trim() ||
+        actionElement.textContent?.trim() ||
+        "";
+
+      if (!text) {
+        return;
+      }
+
+      event.preventDefault();
+      onHtmlCardAction({ action, text });
+    },
+    [onHtmlCardAction],
+  );
 
   return (
     <article className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}>
@@ -157,6 +233,7 @@ export function ChatBubble({
                 isUser ? "chat-markdown-user" : "",
               ].join(" ")}
               dangerouslySetInnerHTML={{ __html: contentHtml }}
+              onClick={onHtmlCardAction ? handleContentClick : undefined}
             />
           )
         ) : (
@@ -216,72 +293,114 @@ function ChatHtmlDocumentFrame({
   onAction?: (action: ChatHtmlCardAction) => void;
   title: string;
 }) {
-  const [height, setHeight] = useState(560);
-  const bridgeId = useId();
+  const [height, setHeight] = useState(180);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const srcDoc = useMemo(
-    () => renderSafeHtmlDocumentToSrcDoc(content, bridgeId),
-    [bridgeId, content],
+    () => renderSafeHtmlDocumentToSrcDoc(content),
+    [content],
   );
 
-  const applyHeight = useCallback((nextHeight: number) => {
-    if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
-      return;
-    }
+  useEffect(
+    () => () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    },
+    [],
+  );
 
-    setHeight(Math.min(Math.max(Math.ceil(nextHeight), 180), 760));
-  }, []);
+  const handleLoad = useCallback(
+    (event: React.SyntheticEvent<HTMLIFrameElement>) => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent<unknown>) => {
-      if (!event.data || typeof event.data !== "object") {
-        return;
+      try {
+        const doc =
+          event.currentTarget.contentDocument ??
+          event.currentTarget.contentWindow?.document;
+        if (!doc) {
+          return;
+        }
+
+        const applyHeight = () => {
+          const docHeight = Math.max(
+            doc.documentElement?.scrollHeight ?? 0,
+            doc.body?.scrollHeight ?? 0,
+            doc.documentElement?.offsetHeight ?? 0,
+            doc.body?.offsetHeight ?? 0,
+          );
+          if (Number.isFinite(docHeight) && docHeight > 0) {
+            setHeight(Math.min(Math.max(Math.ceil(docHeight), 180), 760));
+          }
+        };
+
+        const handleDocumentClick = (clickEvent: MouseEvent) => {
+          if (!onAction) {
+            return;
+          }
+
+          const target = clickEvent.target as {
+            closest?: (selector: string) => Element | null;
+          } | null;
+          const actionElement = target?.closest?.(
+            "[data-ms-action], .scenario-card",
+          ) as HTMLElement | null;
+          if (!actionElement) {
+            return;
+          }
+
+          const requestedAction = actionElement.dataset.msAction ?? "setDraft";
+          if (
+            requestedAction !== "setDraft" &&
+            requestedAction !== "appendDraft" &&
+            requestedAction !== "sendMessage"
+          ) {
+            return;
+          }
+
+          const heading = actionElement
+            .querySelector("h1,h2,h3,h4")
+            ?.textContent?.trim();
+          const paragraph = actionElement
+            .querySelector("p")
+            ?.textContent?.trim();
+          const inferredText = [heading, paragraph].filter(Boolean).join("\n\n");
+          const text =
+            actionElement.dataset.msText?.trim() ||
+            inferredText ||
+            actionElement.textContent?.trim() ||
+            "";
+          if (!text) {
+            return;
+          }
+
+          clickEvent.preventDefault();
+          onAction({ action: requestedAction, text });
+        };
+
+        doc.addEventListener("click", handleDocumentClick);
+        const FrameResizeObserver = doc.defaultView?.ResizeObserver;
+        const resizeObserver = FrameResizeObserver
+          ? new FrameResizeObserver(applyHeight)
+          : null;
+        resizeObserver?.observe(doc.body ?? doc.documentElement);
+        applyHeight();
+
+        cleanupRef.current = () => {
+          doc.removeEventListener("click", handleDocumentClick);
+          resizeObserver?.disconnect();
+        };
+      } catch {
+        setHeight(180);
       }
-
-      const data = event.data as {
-        action?: ChatHtmlCardAction["action"];
-        bridgeId?: string;
-        height?: number;
-        source?: string;
-        text?: string;
-        type?: string;
-      };
-
-      if (data.source !== "my-silly-html-card" || data.bridgeId !== bridgeId) {
-        return;
-      }
-
-      if (data.type === "resize") {
-        applyHeight(Number(data.height));
-        return;
-      }
-
-      if (
-        data.type === "action" &&
-        (data.action === "appendDraft" ||
-          data.action === "sendMessage" ||
-          data.action === "setDraft") &&
-        typeof data.text === "string"
-      ) {
-        onAction?.({ action: data.action, text: data.text });
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [applyHeight, bridgeId, onAction]);
-
-  const handleLoad = useCallback((event: SyntheticEvent<HTMLIFrameElement>) => {
-    event.currentTarget.contentWindow?.postMessage(
-      { source: "my-silly-parent", type: "resize" },
-      "*",
-    );
-  }, []);
+    },
+    [onAction],
+  );
 
   return (
     <iframe
       className="chat-html-frame"
       referrerPolicy="no-referrer"
-      sandbox="allow-scripts"
+      sandbox="allow-same-origin"
       srcDoc={srcDoc}
       style={{ height }}
       title={title}

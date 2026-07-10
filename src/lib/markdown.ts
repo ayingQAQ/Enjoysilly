@@ -9,7 +9,6 @@ const allowedStyleProperties = new Set([
   "align-items",
   "background",
   "background-color",
-  "background-image",
   "border",
   "border-bottom",
   "border-color",
@@ -58,17 +57,50 @@ const allowedStyleProperties = new Set([
   "padding-left",
   "padding-right",
   "padding-top",
-  "position",
   "text-align",
   "text-decoration",
   "text-shadow",
-  "transform",
-  "transition",
   "vertical-align",
   "white-space",
   "width",
   "word-break",
 ]);
+
+const forbiddenEventAttributes = [
+  "onabort",
+  "onblur",
+  "onchange",
+  "onclick",
+  "ondblclick",
+  "onerror",
+  "onfocus",
+  "oninput",
+  "onkeydown",
+  "onkeypress",
+  "onkeyup",
+  "onload",
+  "onmousedown",
+  "onmouseenter",
+  "onmouseleave",
+  "onmousemove",
+  "onmouseout",
+  "onmouseover",
+  "onmouseup",
+  "onsubmit",
+];
+
+export interface SanitizeChatHtmlOptions {
+  /**
+   * 默认 false：移除 img/video/audio/source/track 等指向外部 URL 的资源。
+   * 设为 true 才会保留外部媒体（用于可信场景）。
+   */
+  allowExternalMedia?: boolean;
+  /**
+   * 是否给非 ms- 前缀的 class 加上 ms-card- 前缀，避免污染主 UI。
+   * 默认开启。
+   */
+  prefixClasses?: boolean;
+}
 
 export function renderSafeMarkdownToHtml(markdown: string): string {
   const source = unwrapRenderableHtmlFence(markdown);
@@ -98,11 +130,18 @@ export function isRenderableHtmlDocumentMessage(markdown: string): boolean {
   return htmlDocumentPattern.test(unwrapRenderableHtmlFence(markdown).trim());
 }
 
-export function renderSafeHtmlDocumentToSrcDoc(markdown: string, bridgeId?: string): string {
+/**
+ * 完整 HTML 文档走无脚本 iframe 静态展示：
+ * 剥掉 html/head/body 外壳 → DOMPurify 清洗 → 移除外部媒体 →
+ * 套上只含 reset 样式、不含任何 <script> 的静态骨架。
+ */
+export function renderSafeHtmlDocumentToSrcDoc(markdown: string): string {
   const source = unwrapRenderableHtmlFence(markdown);
-  const cleanedDocument = prepareTrustedLocalHtmlDocument(source);
+  const bodyHtml = stripHtmlDocumentShell(source);
+  const safeHtml = sanitizeChatHtml(bodyHtml, { prefixClasses: false });
+  const safeStyles = extractSafeDocumentStyles(source);
 
-  return ensureIframeDocumentScaffold(cleanedDocument, bridgeId);
+  return ensureStaticIframeDocumentScaffold(safeHtml, safeStyles);
 }
 
 function unwrapRenderableHtmlFence(markdown: string): string {
@@ -129,10 +168,40 @@ function stripHtmlDocumentShell(html: string): string {
     .trim();
 }
 
-function sanitizeChatHtml(html: string): string {
-  return DOMPurify.sanitize(sanitizeInlineStyleAttributes(html), {
+function extractSafeDocumentStyles(html: string): string {
+  return Array.from(html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi))
+    .map((match) => sanitizeDocumentStyleSheet(match[1] ?? ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function sanitizeDocumentStyleSheet(css: string): string {
+  return css
+    .replace(/@import\s+[^;]+;?/gi, "")
+    .replace(/url\s*\(\s*(['"]?)\s*(?:https?:|\/\/)[\s\S]*?\1\s*\)/gi, "none")
+    .replace(/expression\s*\([^)]*\)/gi, "")
+    .replace(/javascript\s*:/gi, "")
+    .replace(/-moz-binding\s*:[^;}]+/gi, "")
+    .replace(/behavior\s*:[^;}]+/gi, "")
+    .replace(/<\/style/gi, "<\\/style")
+    .trim();
+}
+
+function sanitizeChatHtml(
+  html: string,
+  options: SanitizeChatHtmlOptions = {},
+): string {
+  const cleaned = DOMPurify.sanitize(sanitizeInlineStyleAttributes(html), {
     USE_PROFILES: { html: true },
-    ADD_TAGS: ["details", "summary"],
+    ADD_TAGS: [
+      "details",
+      "summary",
+      "section",
+      "article",
+      "figure",
+      "figcaption",
+      "button",
+    ],
     ADD_ATTR: [
       "alt",
       "aria-label",
@@ -146,10 +215,11 @@ function sanitizeChatHtml(html: string): string {
       "target",
       "title",
       "width",
+      "data-ms-action",
+      "data-ms-text",
     ],
     FORBID_TAGS: [
       "base",
-      "button",
       "embed",
       "form",
       "iframe",
@@ -162,7 +232,91 @@ function sanitizeChatHtml(html: string): string {
       "style",
       "textarea",
     ],
+    FORBID_ATTR: forbiddenEventAttributes,
+    ALLOW_DATA_ATTR: false,
   });
+
+  const withoutExternalMedia =
+    options.allowExternalMedia === true
+      ? cleaned
+      : removeExternalMedia(cleaned);
+
+  return options.prefixClasses === false
+    ? withoutExternalMedia
+    : prefixMessageClasses(withoutExternalMedia);
+}
+
+function removeExternalMedia(html: string): string {
+  if (typeof document === "undefined") {
+    // 非浏览器环境（如测试用 mock DOMPurify）下退化为基础正则过滤。
+    return html.replace(
+      /<(img|video|audio|source|track)\b[^>]*\ssrc(?:set)?\s*=\s*(?:"https?:\/\/[^"]*"|'https?:\/\/[^']*')[^>]*>/gi,
+      "",
+    );
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  const mediaNodes = template.content.querySelectorAll(
+    "img, video, audio, source, track",
+  );
+
+  for (const node of Array.from(mediaNodes)) {
+    const src = node.getAttribute("src");
+    if (src && isExternalUrl(src)) {
+      node.remove();
+      continue;
+    }
+
+    const srcset = node.getAttribute("srcset");
+    if (srcset && /https?:\/\//i.test(srcset)) {
+      node.remove();
+    }
+  }
+
+  return template.innerHTML;
+}
+
+function isExternalUrl(value: string): boolean {
+  try {
+    const url = new URL(value, "https://my-silly.local/");
+    return (
+      url.origin !== "https://my-silly.local" && !value.startsWith("data:")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function prefixMessageClasses(html: string): string {
+  if (typeof document === "undefined") {
+    return html;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  const elements = template.content.querySelectorAll("[class]");
+
+  for (const element of Array.from(elements)) {
+    const rawClass = element.getAttribute("class") ?? "";
+    const nextClass = rawClass
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((className) =>
+        className.startsWith("ms-") ? className : `ms-card-${className}`,
+      )
+      .join(" ");
+
+    if (nextClass) {
+      element.setAttribute("class", nextClass);
+    } else {
+      element.removeAttribute("class");
+    }
+  }
+
+  return template.innerHTML;
 }
 
 function sanitizeInlineStyleAttributes(html: string): string {
@@ -210,10 +364,6 @@ function sanitizeInlineStyle(style: string): string {
       return [];
     }
 
-    if (property === "position" && !/^(relative|static)$/i.test(value)) {
-      return [];
-    }
-
     return [`${property}: ${value}`];
   });
 
@@ -237,111 +387,36 @@ function escapeHtmlText(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function prepareTrustedLocalHtmlDocument(html: string): string {
-  return html
-    .replace(/<base\b[^>]*>/gi, "")
-    .replace(/\s(?:href|src)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, "");
-}
-
-function ensureIframeDocumentScaffold(html: string, bridgeId?: string): string {
-  const hasHtmlShell = /<html\b/i.test(html);
-  const resetStyle = `
+function ensureStaticIframeDocumentScaffold(
+  html: string,
+  documentStyles: string,
+): string {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'">
 <style>
 html, body {
   box-sizing: border-box;
-  min-height: auto !important;
   overflow-x: hidden;
 }
 *, *::before, *::after {
   box-sizing: inherit;
 }
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
 img, video, canvas, svg {
   max-width: 100%;
   height: auto;
 }
-body {
-  margin: 0;
-}
-</style>`;
-  const metaViewport =
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
-
-  const documentWithBridge = injectHtmlCardBridge(html, bridgeId);
-
-  if (!hasHtmlShell) {
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-${metaViewport}
-${resetStyle}
+${documentStyles}
+</style>
 </head>
 <body>
-${documentWithBridge}
+${html}
 </body>
 </html>`;
-  }
-
-  if (/<head\b[^>]*>/i.test(html)) {
-    return documentWithBridge.replace(/<head\b[^>]*>/i, (match) => `${match}\n${metaViewport}\n${resetStyle}`);
-  }
-
-  return documentWithBridge.replace(/<html\b[^>]*>/i, (match) => `${match}\n<head>${metaViewport}${resetStyle}</head>`);
-}
-
-function injectHtmlCardBridge(html: string, bridgeId?: string): string {
-  if (!bridgeId) {
-    return html;
-  }
-
-  const bridgeScript = `<script>
-(() => {
-  const bridgeId = ${JSON.stringify(bridgeId)};
-  const source = "my-silly-html-card";
-  const post = (payload) => {
-    window.parent?.postMessage({ source, bridgeId, ...payload }, "*");
-  };
-  const readText = (element) => {
-    const explicitText = element?.getAttribute?.("data-ms-text");
-    if (explicitText && explicitText.trim()) return explicitText.trim();
-    const title = element?.querySelector?.("h1,h2,h3,h4")?.textContent || "";
-    const body = element?.querySelector?.("p")?.textContent || "";
-    const combined = [title, body].map((part) => part.trim()).filter(Boolean).join("\\n\\n");
-    return combined || (element?.textContent || "").trim();
-  };
-  const resize = () => {
-    const height = Math.max(
-      document.documentElement?.scrollHeight || 0,
-      document.body?.scrollHeight || 0,
-      document.documentElement?.offsetHeight || 0,
-      document.body?.offsetHeight || 0
-    );
-    post({ type: "resize", height });
-  };
-  document.addEventListener("click", (event) => {
-    const target = event.target?.closest?.("[data-ms-action], .scenario-card");
-    if (!target) return;
-    const action = target.getAttribute("data-ms-action") || "setDraft";
-    const text = readText(target);
-    if (!text) return;
-    if (action === "sendMessage" || action === "setDraft" || action === "appendDraft") {
-      event.preventDefault();
-      post({ type: "action", action, text });
-    }
-  });
-  window.addEventListener("load", resize);
-  window.addEventListener("resize", resize);
-  if (window.ResizeObserver) {
-    new ResizeObserver(resize).observe(document.body || document.documentElement);
-  }
-  setTimeout(resize, 50);
-  setTimeout(resize, 300);
-  setTimeout(resize, 900);
-})();
-</script>`;
-
-  if (/<\/body>/i.test(html)) {
-    return html.replace(/<\/body>/i, `${bridgeScript}</body>`);
-  }
-
-  return `${html}\n${bridgeScript}`;
 }

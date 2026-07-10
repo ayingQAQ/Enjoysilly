@@ -163,13 +163,13 @@ describe("chat history builder", () => {
     })).toBe("用户: 第一句\n角色: 第二句\n深度 1\n用户: 第三句");
   });
 
-  it("feeds prompt builder chatHistory marker", () => {
+  it("feeds prompt builder chatHistory marker", async () => {
     const chatHistory = buildChatHistoryText([
       createMessage({ name: "用户", is_user: true, mes: "你好" }),
       createMessage({ name: "角色", is_user: false, mes: "我在。" }),
     ]);
 
-    const messages = buildChatCompletionMessages({
+    const messages = await buildChatCompletionMessages({
       preset: createPreset(),
       character: createCharacter(),
       chatHistory,

@@ -6,7 +6,7 @@ import type {
   PromptOrderItem,
   PromptRole,
 } from "../types/preset";
-import { executeRegexScripts, type RegexScriptLike } from "./regexEngine";
+import { executeRegexScriptsAsync, type RegexScriptLike } from "./regexEngine";
 import { replaceMacros, type MacroReplacementContext } from "./macros";
 import {
   scanWorldInfo,
@@ -55,9 +55,9 @@ interface PromptBuilderContext {
   worldInfoScanResult?: WorldInfoScanResult;
 }
 
-export function buildChatCompletionMessages(
+export async function buildChatCompletionMessages(
   input: PromptBuilderInput,
-): ChatCompletionMessage[] {
+): Promise<ChatCompletionMessage[]> {
   const context = createPromptBuilderContext(input);
   const promptMap = new Map(
     input.preset.prompts.map((prompt) => [prompt.identifier, prompt]),
@@ -80,7 +80,7 @@ export function buildChatCompletionMessages(
     ];
   });
 
-  const processed = applyRegexScriptsToMessages(messages, context);
+  const processed = await applyRegexScriptsToMessages(messages, context);
 
   return prependGroupContext(processed, context);
 }
@@ -284,27 +284,31 @@ function isPromptOrderItemEnabled(orderItem: PromptOrderItem): boolean {
   return orderItem.enabled !== false;
 }
 
-function applyRegexScriptsToMessages(
+async function applyRegexScriptsToMessages(
   messages: ChatCompletionMessage[],
   context: PromptBuilderContext,
-): ChatCompletionMessage[] {
+): Promise<ChatCompletionMessage[]> {
   const scripts = context.input.regexScripts;
 
   if (!scripts || scripts.length === 0) {
     return messages;
   }
 
-  return messages.map((message) => {
-    const result = executeRegexScripts(message.content, scripts, {
-      placement: 5,
-      promptOnly: true,
-      markdownOnly: false,
-    });
+  const results = await Promise.all(
+    messages.map(async (message) => {
+      const result = await executeRegexScriptsAsync(message.content, scripts, {
+        placement: 5,
+        promptOnly: true,
+        markdownOnly: false,
+      });
 
-    if (result.text === message.content) {
-      return message;
-    }
+      if (result.text === message.content) {
+        return message;
+      }
 
-    return { ...message, content: result.text };
-  });
+      return { ...message, content: result.text };
+    }),
+  );
+
+  return results;
 }

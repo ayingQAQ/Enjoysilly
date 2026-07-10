@@ -47,9 +47,9 @@ export interface PreparedChatCompletionRequest {
   worldInfoScanResult?: WorldInfoScanResult;
 }
 
-export function prepareChatCompletionRequest(
+export async function prepareChatCompletionRequest(
   input: PrepareChatCompletionRequestInput,
-): PreparedChatCompletionRequest {
+): Promise<PreparedChatCompletionRequest> {
   const chatMessages = input.chatMessages ?? [];
   const worldInfoScanResult = createWorldInfoScanResult(input, chatMessages);
   const chatHistory = buildChatHistoryText(chatMessages, {
@@ -57,7 +57,7 @@ export function prepareChatCompletionRequest(
     includeSystemMessages: input.includeSystemMessages,
     atDepthEntries: worldInfoScanResult?.atDepth,
   });
-  const messages = buildChatCompletionMessages({
+  const messages = await buildChatCompletionMessages({
     preset: input.preset,
     character: input.character,
     userName: input.userName,

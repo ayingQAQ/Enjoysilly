@@ -12,7 +12,6 @@ import {
 } from "./chatRuntime";
 import { getChatMessageDisplayText } from "./chatHistory";
 import {
-  executeRegexScripts,
   executeRegexScriptsAsync,
   type RegexScriptLike,
 } from "./regexEngine";
@@ -166,7 +165,7 @@ export interface StreamingChatContinueFinishedUpdate {
 export async function* runStreamingChatTurn(
   input: RunStreamingChatTurnInput,
 ): AsyncGenerator<StreamingChatTurnUpdate> {
-  const processedUserText = applyUserInputRegex(input.userText, input.regexScripts);
+  const processedUserText = await applyUserInputRegex(input.userText, input.regexScripts);
   const turn = startChatTurn({
     messages: input.messages,
     userName: input.userName,
@@ -176,7 +175,7 @@ export async function* runStreamingChatTurn(
     userExtra: input.userExtra,
     assistantExtra: input.assistantExtra,
   });
-  const prepared = prepareChatCompletionRequest({
+  const prepared = await prepareChatCompletionRequest({
     ...input,
     chatMessages: turn.messages,
     stream: true,
@@ -251,7 +250,7 @@ export async function* runStreamingChatReroll(
     input.messages,
     input.assistantMessageIndex,
   );
-  const prepared = prepareChatCompletionRequest({
+  const prepared = await prepareChatCompletionRequest({
     ...input,
     chatMessages: input.messages.slice(0, input.assistantMessageIndex),
     stream: true,
@@ -334,7 +333,7 @@ export async function* runStreamingChatContinue(
     input.assistantMessageIndex,
   );
   const baseContent = getChatMessageDisplayText(targetMessage);
-  const prepared = prepareChatCompletionRequest({
+  const prepared = await prepareChatCompletionRequest({
     ...input,
     chatMessages: input.messages,
     stream: true,
@@ -492,19 +491,21 @@ function replaceMessageAt(
   );
 }
 
-function applyUserInputRegex(
+async function applyUserInputRegex(
   text: string,
   scripts?: RegexScriptLike[],
-): string {
+): Promise<string> {
   if (!scripts || scripts.length === 0) {
     return text;
   }
 
-  return executeRegexScripts(text, scripts, {
+  const result = await executeRegexScriptsAsync(text, scripts, {
     placement: 1,
     promptOnly: false,
     markdownOnly: false,
-  }).text;
+  });
+
+  return result.text;
 }
 
 async function applyAIOutputRegex(
