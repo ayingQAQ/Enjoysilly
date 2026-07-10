@@ -4,114 +4,42 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type FormEvent,
 } from "react";
 import {
-  Archive,
-  Bot,
   Download,
   Loader2,
   MessageSquare,
   Plus,
   RotateCcw,
   Save,
-  Send,
-  Square,
   Upload,
-  UserRound,
 } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
-import { extractRegexScripts } from "../lib/presetIO";
-import {
-  runStreamingChatContinue,
-  runStreamingChatReroll,
-  runStreamingChatTurn,
-} from "../lib/chatStreaming";
-import { downloadBytesToFile } from "../lib/browserDownload";
-import {
-  loadCharacterAssetSummaries,
-  loadPresetAssetSummaries,
-  type CharacterAssetSummary,
-  type PresetAssetSummary,
-} from "../services/assetCatalog";
-import {
-  loadCharacterDetailSummary,
-  type CharacterDetailSummary,
-} from "../services/characterDetails";
-import {
-  loadPresetDetailSummary,
-  type PresetDetailSummary,
-} from "../services/presetDetails";
-import {
-  saveChatSnapshotToDatabase,
-} from "../services/chatPersistence";
-import { loadAppSettings, loadUserPersonas, selectDefaultPersona } from "../services/settingsStore";
-import { importChatToDatabase } from "../services/chatImport";
-import {
-  deleteChatArchive,
-  loadChatArchiveDetail,
-  loadChatArchiveSummaries,
-  renameChatArchive,
-  type ChatArchiveSummary,
-} from "../services/chatArchive";
-import { createChatJsonlExport } from "../services/chatExport";
-import { listQuickReplySets, getWorldInfo, type StoredQuickReplySet } from "../lib/db";
-import type { WorldInfoScanInputEntry } from "../lib/worldInfoScan";
 import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
 import {
-  AssetSelectionSummary,
-  ChatArchiveList,
-  ChatBubble,
-  EmptyChatState,
-  Field,
-  GreetingPicker,
-  NoticeText,
-  PanelTitle,
-  SelectField,
   SummaryTile,
-  TextAreaField,
   type ChatHtmlCardAction,
 } from "./ChatScreenPanels";
+import { ChatComposer } from "./chat/ChatComposer";
+import { ChatMessageList } from "./chat/ChatMessageList";
+import { ChatSidebar } from "./chat/ChatSidebar";
+import { useChatAssets } from "./chat/useChatAssets";
+import { useChatArchives } from "./chat/useChatArchives";
+import { useChatImportExport } from "./chat/useChatImportExport";
+import { useChatStreamingActions } from "./chat/useChatStreamingActions";
 import {
-  cloneChatMessages,
-  cloneChatMetadata,
-  createCharacterGreetingOptions,
   createChatDraftStatus,
-  createChatImportDatabaseOptions,
-  createChatSaveSnapshotInput,
   createGreetingChatMessage,
-  createImportedChatScreenState,
-  createLocalChatCharacter,
-  createMinimalChatPreset,
-  defaultBaseUrl,
-  defaultCharacterDescription,
   defaultCharacterName,
-  defaultModel,
-  defaultPersonaDescription,
   defaultUserName,
   deleteChatMessageAt,
-  formatChatExportError,
-  formatChatImportError,
-  formatChatSaveError,
-  formatChatSendError,
-  formatUnknownError,
-  getChatArchiveFilterCharacterId,
-  getLastAssistantMessageIndex,
-  isAbortError,
   localCharacterOptionId,
   minimalPresetOptionId,
   normalizeName,
   appendQuickReplyToInput,
-  extractCharacterRegexScripts,
-  extractWorldInfoEntries,
-  resolveDefaultWorldInfoEntries,
-  selectChatCharacterPayload,
   selectChatMessageSwipeAt,
-  selectChatPresetPayload,
-  selectVisibleQuickReplySets,
   updateChatMessageTextAt,
 } from "./chatScreenHelpers";
 
@@ -120,313 +48,162 @@ export function ChatScreen() {
   const [inputText, setInputText] = useState("");
   const interactiveSubmitTextRef = useRef<string | null>(null);
   const chatFormRef = useRef<HTMLFormElement>(null);
-  const [baseUrl, setBaseUrl] = useState(defaultBaseUrl);
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(defaultModel);
-  const [userName, setUserName] = useState(defaultUserName);
-  const [characterName, setCharacterName] = useState(defaultCharacterName);
-  const [characterDescription, setCharacterDescription] = useState(
-    defaultCharacterDescription,
-  );
-  const [personaDescription, setPersonaDescription] = useState(
-    defaultPersonaDescription,
-  );
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isImportingChat, setIsImportingChat] = useState(false);
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [assetError, setAssetError] = useState<string | null>(null);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
-  const [isAssetLoading, setIsAssetLoading] = useState(true);
-  const [isArchiveLoading, setIsArchiveLoading] = useState(true);
-  const [loadingArchiveId, setLoadingArchiveId] = useState<string | null>(null);
-  const [archiveActionId, setArchiveActionId] = useState<string | null>(null);
-  const [characters, setCharacters] = useState<CharacterAssetSummary[]>([]);
-  const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
-  const [chatArchives, setChatArchives] = useState<ChatArchiveSummary[]>([]);
   const [loadedArchiveId, setLoadedArchiveId] = useState<string | null>(null);
   const [loadedArchiveName, setLoadedArchiveName] = useState<string | null>(null);
   const [loadedChatMetadata, setLoadedChatMetadata] =
     useState<ChatMetadataLine | null>(null);
-  const [selectedCharacterId, setSelectedCharacterId] = useState(
-    localCharacterOptionId,
-  );
-  const [selectedPresetId, setSelectedPresetId] = useState(minimalPresetOptionId);
-  const [selectedCharacterDetail, setSelectedCharacterDetail] =
-    useState<CharacterDetailSummary | null>(null);
-  const [selectedPresetDetail, setSelectedPresetDetail] =
-    useState<PresetDetailSummary | null>(null);
-  const [characterDetailError, setCharacterDetailError] = useState<string | null>(
-    null,
-  );
-  const [presetDetailError, setPresetDetailError] = useState<string | null>(null);
-  const [qrSets, setQrSets] = useState<StoredQuickReplySet[]>([]);
-  const [worldInfoEntries, setWorldInfoEntries] = useState<WorldInfoScanInputEntry[] | undefined>(
-    undefined,
-  );
-  const [defaultQuickReplySetId, setDefaultQuickReplySetId] = useState<string | undefined>(
-    undefined,
-  );
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const chatImportInputRef = useRef<HTMLInputElement>(null);
   const lastAutoGreetingCharacterIdRef = useRef<string | null>(null);
 
-  const fallbackPreset = useMemo(() => createMinimalChatPreset(), []);
-  const localCharacter = useMemo(
-    () =>
-      createLocalChatCharacter({
-        name: characterName,
-        description: characterDescription,
-      }),
-    [characterDescription, characterName],
-  );
-  const activeCharacter = selectChatCharacterPayload(
-    selectedCharacterDetail?.stored.payload,
-    localCharacter,
-  );
-  const activePreset = selectChatPresetPayload(
-    selectedPresetDetail?.stored.payload,
-    fallbackPreset,
-  );
-  const greetingOptions = useMemo(
-    () => createCharacterGreetingOptions(activeCharacter),
-    [activeCharacter],
-  );
-  const embeddedWorldInfoEntries = useMemo(() => {
-    const embeddedBook =
-      selectedCharacterDetail?.stored.payload.data.character_book;
-
-    if (!embeddedBook) {
-      return undefined;
-    }
-
-    const entries = extractWorldInfoEntries(embeddedBook);
-
-    return entries.length > 0 ? entries : undefined;
-  }, [selectedCharacterDetail]);
-  const activeWorldInfoEntries = embeddedWorldInfoEntries ?? worldInfoEntries;
-  const archiveFilterCharacterId =
-    getChatArchiveFilterCharacterId(selectedCharacterId);
-  const isCharacterReady =
-    selectedCharacterId === localCharacterOptionId ||
-    selectedCharacterDetail !== null;
-  const isPresetReady =
-    selectedPresetId === minimalPresetOptionId || selectedPresetDetail !== null;
+  const {
+    activeCharacter,
+    activePreset,
+    activeRegexScripts,
+    activeWorldInfoEntries,
+    apiKey,
+    assetError,
+    baseUrl,
+    characterDescription,
+    characterDetailError,
+    characterName,
+    characters,
+    embeddedWorldInfoEntries,
+    greetingOptions,
+    isAssetLoading,
+    isCharacterReady,
+    isPresetReady,
+    model,
+    personaDescription,
+    presetDetailError,
+    presets,
+    selectedCharacterDetail,
+    selectedCharacterId,
+    selectedPresetDetail,
+    selectedPresetId,
+    setCharacterDescription,
+    setCharacterName,
+    setPersonaDescription,
+    setSelectedCharacterId,
+    setSelectedPresetId,
+    setUserName,
+    userName,
+    visibleQuickReplySets,
+  } = useChatAssets({
+    loadedArchiveId,
+    messageCount: messages.length,
+  });
+  const {
+    canContinue,
+    handleContinueMessage,
+    handleRerollMessage,
+    handleSend,
+    handleStop,
+    isStreaming,
+  } = useChatStreamingActions({
+    activeCharacter,
+    activePreset,
+    activeRegexScripts,
+    activeWorldInfoEntries,
+    apiKey,
+    baseUrl,
+    inputText,
+    interactiveSubmitTextRef,
+    isCharacterReady,
+    isImportingChat,
+    isPresetReady,
+    messages,
+    model,
+    personaDescription,
+    setError,
+    setHasUnsavedChanges,
+    setInputText,
+    setLoadedChatMetadata,
+    setMessages,
+    setSaveMessage,
+    setStatusText,
+    userName,
+  });
   const canSend =
     !isStreaming &&
     !isImportingChat &&
     inputText.trim().length > 0 &&
     isCharacterReady &&
     isPresetReady;
-  const canImport = !isStreaming && !isImportingChat;
-  const canSave =
-    !isStreaming && !isSaving && !isImportingChat && messages.length > 0;
-  const canExport = !isStreaming && !isImportingChat && messages.length > 0;
-  const lastAssistantMessageIndex = getLastAssistantMessageIndex(messages);
-  const canContinue =
-    !isStreaming &&
-    !isImportingChat &&
-    isCharacterReady &&
-    isPresetReady &&
-    lastAssistantMessageIndex !== undefined;
   const draftStatus = createChatDraftStatus({
     hasUnsavedChanges,
     loadedArchiveName,
     messageCount: messages.length,
   });
-  const activeRegexScripts = useMemo(
-    () => [
-      ...extractRegexScripts(activePreset),
-      ...extractCharacterRegexScripts(activeCharacter),
-    ],
-    [activeCharacter, activePreset],
-  );
-  const visibleQrSets = useMemo(
-    () => selectVisibleQuickReplySets(qrSets, defaultQuickReplySetId),
-    [qrSets, defaultQuickReplySetId],
-  );
   const estimatedTokenCount = useMemo(
     () => estimateChatMessagesTokens(messages),
     [messages],
   );
 
-  const refreshChatArchives = useCallback(
-    async (options: { silent?: boolean } = {}) => {
-      if (!options.silent) {
-        setIsArchiveLoading(true);
-      }
-      setArchiveError(null);
-
-      try {
-        const summaries = await loadChatArchiveSummaries({
-          characterId: archiveFilterCharacterId,
-        });
-
-        setChatArchives(summaries);
-      } catch (loadError: unknown) {
-        setArchiveError(formatUnknownError(loadError));
-      } finally {
-        if (!options.silent) {
-          setIsArchiveLoading(false);
-        }
-      }
-    },
-    [archiveFilterCharacterId],
-  );
-
-  useEffect(() => {
-    let isActive = true;
-
-    setIsAssetLoading(true);
-    setAssetError(null);
-
-    Promise.all([loadCharacterAssetSummaries(), loadPresetAssetSummaries()])
-      .then(([loadedCharacters, loadedPresets]) => {
-        if (!isActive) {
-          return;
-        }
-
-        setCharacters(loadedCharacters);
-        setPresets(loadedPresets);
-      })
-      .catch((loadError: unknown) => {
-        if (isActive) {
-          setAssetError(formatUnknownError(loadError));
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setIsAssetLoading(false);
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (
-      isAssetLoading ||
-      selectedCharacterId !== localCharacterOptionId ||
-      characters.length === 0 ||
-      messages.length > 0 ||
-      loadedArchiveId
-    ) {
-      return;
-    }
-
-    setSelectedCharacterId(characters[0]?.id ?? localCharacterOptionId);
-  }, [
-    characters,
-    isAssetLoading,
+  const {
+    archiveActionId,
+    archiveError,
+    archives: chatArchives,
+    handleDeleteArchive,
+    handleLoadArchive,
+    handleRenameArchive,
+    isArchiveLoading,
+    loadingArchiveId,
+    refreshChatArchives,
+  } = useChatArchives({
+    isImportingChat,
+    isStreaming,
     loadedArchiveId,
-    messages.length,
     selectedCharacterId,
-  ]);
+    setCharacterName,
+    setError,
+    setHasUnsavedChanges,
+    setLoadedArchiveId,
+    setLoadedArchiveName,
+    setLoadedChatMetadata,
+    setMessages,
+    setSaveMessage,
+    setStatusText,
+    setUserName,
+  });
 
-  useEffect(() => {
-    void refreshChatArchives();
-  }, [refreshChatArchives]);
-
-  useEffect(() => {
-    let active = true;
-    listQuickReplySets()
-      .then((list) => { if (active) setQrSets(list); })
-      .catch(() => { if (active) setQrSets([]); });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    Promise.all([loadAppSettings(), loadUserPersonas()])
-      .then(async ([settings, personas]) => {
-        if (!active) return;
-        const persona = selectDefaultPersona(personas);
-        setBaseUrl(settings.api.baseUrl);
-        setModel(settings.api.model);
-        if (settings.api.apiKey) setApiKey(settings.api.apiKey);
-        setUserName(persona.name);
-        if (persona.description) setPersonaDescription(persona.description);
-        if (settings.defaultPresetId) {
-          setSelectedPresetId(settings.defaultPresetId);
-        }
-        setDefaultQuickReplySetId(settings.defaultQuickReplySetId);
-        if (settings.defaultWorldId) {
-          try {
-            const world = await getWorldInfo(settings.defaultWorldId);
-            if (active) {
-              setWorldInfoEntries(
-                resolveDefaultWorldInfoEntries(settings.defaultWorldId, world ?? null),
-              );
-            }
-          } catch {
-            if (active) setWorldInfoEntries(undefined);
-          }
-        }
-      })
-      .catch(() => { /* settings unavailable, keep defaults */ });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    if (selectedCharacterId === localCharacterOptionId) {
-      setSelectedCharacterDetail(null);
-      setCharacterDetailError(null);
-      return;
-    }
-
-    let isActive = true;
-    setSelectedCharacterDetail(null);
-    setCharacterDetailError(null);
-
-    loadCharacterDetailSummary(selectedCharacterId)
-      .then((detail) => {
-        if (isActive) {
-          setSelectedCharacterDetail(detail);
-        }
-      })
-      .catch((loadError: unknown) => {
-        if (isActive) {
-          setCharacterDetailError(formatUnknownError(loadError));
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [selectedCharacterId]);
-
-  useEffect(() => {
-    if (selectedPresetId === minimalPresetOptionId) {
-      setSelectedPresetDetail(null);
-      setPresetDetailError(null);
-      return;
-    }
-
-    let isActive = true;
-    setSelectedPresetDetail(null);
-    setPresetDetailError(null);
-
-    loadPresetDetailSummary(selectedPresetId)
-      .then((detail) => {
-        if (isActive) {
-          setSelectedPresetDetail(detail);
-        }
-      })
-      .catch((loadError: unknown) => {
-        if (isActive) {
-          setPresetDetailError(formatUnknownError(loadError));
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [selectedPresetId]);
+  const {
+    canExport,
+    canImport,
+    canSave,
+    chatImportInputRef,
+    handleChatImportFileChange,
+    handleExport,
+    handlePickChatImportFile,
+    handleSave,
+    isSaving,
+  } = useChatImportExport({
+    activeCharacter,
+    hasUnsavedChanges,
+    isImportingChat,
+    isStreaming,
+    loadedArchiveId,
+    loadedArchiveName,
+    loadedChatMetadata,
+    messages,
+    refreshChatArchives,
+    selectedCharacterId,
+    setCharacterName,
+    setError,
+    setHasUnsavedChanges,
+    setIsImportingChat,
+    setLoadedArchiveId,
+    setLoadedArchiveName,
+    setLoadedChatMetadata,
+    setMessages,
+    setSaveMessage,
+    setStatusText,
+    setUserName,
+    userName,
+  });
 
   useEffect(() => {
     if (
@@ -468,179 +245,6 @@ export function ChatScreen() {
     userName,
   ]);
 
-  const autoSaveChat = useCallback(async () => {
-    if (messages.length === 0 || isStreaming || isImportingChat || isSaving) {
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const stored = await saveChatSnapshotToDatabase({
-        ...createChatSaveSnapshotInput({
-          activeCharacter,
-          chatMetadata: loadedChatMetadata ?? undefined,
-          messages,
-          selectedCharacterId,
-          userName,
-        }),
-        id: loadedArchiveId ?? undefined,
-        name: loadedArchiveName ?? undefined,
-      });
-
-      setLoadedArchiveId(stored.id);
-      setLoadedArchiveName(stored.name);
-      setHasUnsavedChanges(false);
-      setSaveMessage(`已自动保存：${stored.name}`);
-      setStatusText("对话已自动保存到本地数据库");
-      await refreshChatArchives({ silent: true });
-    } catch (saveError: unknown) {
-      setError(formatChatSaveError(saveError));
-      setHasUnsavedChanges(false);
-      setStatusText("自动保存失败");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [
-    activeCharacter,
-    isImportingChat,
-    isSaving,
-    isStreaming,
-    loadedArchiveId,
-    loadedArchiveName,
-    loadedChatMetadata,
-    messages,
-    refreshChatArchives,
-    selectedCharacterId,
-    userName,
-  ]);
-
-  useEffect(() => {
-    if (
-      !hasUnsavedChanges ||
-      messages.length === 0 ||
-      isStreaming ||
-      isImportingChat ||
-      isSaving
-    ) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      void autoSaveChat();
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [
-    autoSaveChat,
-    hasUnsavedChanges,
-    isImportingChat,
-    isSaving,
-    isStreaming,
-    messages.length,
-  ]);
-
-  const handleSend = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-
-      const submittedText = interactiveSubmitTextRef.current ?? inputText;
-      interactiveSubmitTextRef.current = null;
-      const userText = submittedText.trim();
-      const trimmedBaseUrl = baseUrl.trim();
-      const trimmedModel = model.trim();
-
-      if (!userText || isStreaming) {
-        return;
-      }
-
-      if (!isCharacterReady || !isPresetReady) {
-        setError("正在读取选中的角色或预设，请稍后再发送。");
-        return;
-      }
-
-      if (!trimmedBaseUrl) {
-        setError("请先填写 OpenAI 兼容 API Base URL。");
-        return;
-      }
-
-      if (!trimmedModel) {
-        setError("请先填写模型名称。");
-        return;
-      }
-
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      setIsStreaming(true);
-      setStatusText("正在请求模型");
-      setError(null);
-      setSaveMessage(null);
-      setLoadedChatMetadata(null);
-      setInputText("");
-
-      try {
-        for await (const update of runStreamingChatTurn({
-          baseUrl: trimmedBaseUrl,
-          apiKey,
-          model: trimmedModel,
-          preset: activePreset,
-          character: activeCharacter,
-          messages,
-          userName: normalizeName(userName, defaultUserName),
-          userText,
-          personaDescription,
-          worldInfoEntries: activeWorldInfoEntries,
-          signal: controller.signal,
-          regexScripts: activeRegexScripts,
-        })) {
-          setMessages(update.messages);
-          setHasUnsavedChanges(true);
-
-          if (update.kind === "started") {
-            setStatusText("模型已连接，等待首个 token");
-          } else if (update.kind === "delta") {
-            setStatusText("正在流式接收");
-          } else {
-            setStatusText(
-              update.finishReason
-                ? `完成：${update.finishReason}`
-                : "回复完成",
-            );
-          }
-        }
-      } catch (sendError: unknown) {
-        if (isAbortError(sendError)) {
-          setStatusText("已停止生成");
-          return;
-        }
-
-        setError(formatChatSendError(sendError));
-        setStatusText("请求失败");
-      } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null;
-        }
-        setIsStreaming(false);
-      }
-    },
-    [
-      activeCharacter,
-      activePreset,
-      activeWorldInfoEntries,
-      apiKey,
-      baseUrl,
-      inputText,
-      isCharacterReady,
-      isPresetReady,
-      isStreaming,
-      messages,
-      model,
-      personaDescription,
-      userName,
-    ],
-  );
-
   const handleHtmlCardAction = useCallback(
     (action: ChatHtmlCardAction) => {
       const text = action.text.trim();
@@ -670,202 +274,6 @@ export function ChatScreen() {
       setStatusText("HTML card content copied to draft");
     },
     [isStreaming],
-  );
-
-  const handleStop = useCallback(() => {
-    abortControllerRef.current?.abort();
-  }, []);
-
-  const handlePickChatImportFile = useCallback(() => {
-    if (!canImport) {
-      return;
-    }
-
-    chatImportInputRef.current?.click();
-  }, [canImport]);
-
-  const handleChatImportFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = "";
-
-      if (!file || !canImport) {
-        return;
-      }
-
-      if (
-        messages.length > 0 &&
-        !window.confirm(
-          "导入 JSONL 会替换当前页面消息。已保存的本地存档不会被删除，是否继续？",
-        )
-      ) {
-        return;
-      }
-
-      setIsImportingChat(true);
-      setError(null);
-      setSaveMessage(null);
-      setArchiveError(null);
-      setStatusText("正在导入 JSONL");
-
-      try {
-        const imported = await importChatToDatabase(
-          new Uint8Array(await file.arrayBuffer()),
-          file.name,
-          createChatImportDatabaseOptions(selectedCharacterId),
-        );
-        const importedState = createImportedChatScreenState({
-          chat: imported.chat,
-          selectedCharacterId,
-          storedId: imported.stored.id,
-          storedName: imported.stored.name,
-        });
-
-        setMessages(importedState.messages);
-        setUserName(importedState.userName);
-
-        if (importedState.characterName) {
-          setCharacterName(importedState.characterName);
-        }
-
-        setLoadedArchiveId(importedState.loadedArchiveId);
-        setLoadedArchiveName(importedState.loadedArchiveName);
-        setLoadedChatMetadata(importedState.metadata);
-        setHasUnsavedChanges(false);
-        setSaveMessage(
-          `已导入并保存：${imported.stored.name}（${imported.chat.messages.length} 行消息）`,
-        );
-        setStatusText("JSONL 已导入到当前页面和本地数据库");
-        await refreshChatArchives({ silent: true });
-      } catch (importError: unknown) {
-        setError(formatChatImportError(importError));
-        setStatusText("导入失败");
-      } finally {
-        setIsImportingChat(false);
-      }
-    },
-    [canImport, messages.length, refreshChatArchives, selectedCharacterId],
-  );
-
-  const handleSave = useCallback(async () => {
-    if (!canSave) {
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    setSaveMessage(null);
-
-    try {
-      const stored = await saveChatSnapshotToDatabase(
-        createChatSaveSnapshotInput({
-          activeCharacter,
-          chatMetadata: loadedChatMetadata ?? undefined,
-          messages,
-          selectedCharacterId,
-          userName,
-        }),
-      );
-
-      setSaveMessage(`已保存：${stored.name}`);
-      setLoadedArchiveId(stored.id);
-      setLoadedArchiveName(stored.name);
-      setHasUnsavedChanges(false);
-      setStatusText("对话已保存到本地数据库");
-      await refreshChatArchives({ silent: true });
-    } catch (saveError: unknown) {
-      setError(formatChatSaveError(saveError));
-      setStatusText("保存失败");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [
-    activeCharacter,
-    canSave,
-    loadedChatMetadata,
-    messages,
-    refreshChatArchives,
-    selectedCharacterId,
-    userName,
-  ]);
-
-  const handleExport = useCallback(() => {
-    if (!canExport) {
-      return;
-    }
-
-    setError(null);
-    setSaveMessage(null);
-
-    try {
-      const artifact = createChatJsonlExport({
-        messages,
-        userName: normalizeName(userName, defaultUserName),
-        characterName: normalizeName(
-          activeCharacter.data.name,
-          defaultCharacterName,
-        ),
-        chatName: loadedArchiveName ?? undefined,
-        metadata: loadedChatMetadata ?? undefined,
-      });
-
-      downloadBytesToFile(
-        artifact.bytes,
-        artifact.fileName,
-        "application/x-ndjson",
-      );
-      setSaveMessage(`已导出：${artifact.fileName}`);
-      setStatusText("当前对话已导出为 JSONL");
-    } catch (exportError: unknown) {
-      setError(formatChatExportError(exportError));
-      setStatusText("导出失败");
-    }
-  }, [
-    activeCharacter,
-    canExport,
-    loadedArchiveName,
-    loadedChatMetadata,
-    messages,
-    userName,
-  ]);
-
-  const handleLoadArchive = useCallback(
-    async (archiveId: string) => {
-      if (isStreaming || loadingArchiveId || archiveActionId) {
-        return;
-      }
-
-      setLoadingArchiveId(archiveId);
-      setError(null);
-      setSaveMessage(null);
-      setArchiveError(null);
-
-      try {
-        const detail = await loadChatArchiveDetail(archiveId);
-        const metadata = detail.stored.payload.metadata;
-
-        setMessages(cloneChatMessages(detail.stored.payload.messages));
-        setLoadedChatMetadata(cloneChatMetadata(metadata));
-        setUserName(normalizeName(metadata.user_name, defaultUserName));
-        setHasUnsavedChanges(false);
-
-        if (selectedCharacterId === localCharacterOptionId) {
-          setCharacterName(
-            normalizeName(metadata.character_name, defaultCharacterName),
-          );
-        }
-
-        setLoadedArchiveId(detail.summary.id);
-        setLoadedArchiveName(detail.summary.name);
-        setStatusText(`已加载存档：${detail.summary.name}`);
-      } catch (loadError: unknown) {
-        setArchiveError(formatUnknownError(loadError));
-        setStatusText("读取存档失败");
-      } finally {
-        setLoadingArchiveId(null);
-      }
-    },
-    [archiveActionId, isStreaming, loadingArchiveId, selectedCharacterId],
   );
 
   const handleNewChat = useCallback(() => {
@@ -1009,280 +417,6 @@ export function ChatScreen() {
     [isImportingChat, isStreaming],
   );
 
-  const handleRerollMessage = useCallback(
-    async (messageIndex: number) => {
-      if (isStreaming || isImportingChat || !isCharacterReady || !isPresetReady) {
-        return;
-      }
-
-      const targetMessage = messages[messageIndex];
-
-      if (
-        !targetMessage ||
-        targetMessage.is_user === true ||
-        targetMessage.is_system === true
-      ) {
-        return;
-      }
-
-      const trimmedBaseUrl = baseUrl.trim();
-      const trimmedModel = model.trim();
-
-      if (!trimmedBaseUrl) {
-        setError("请先填写 OpenAI 兼容 API Base URL。");
-        return;
-      }
-
-      if (!trimmedModel) {
-        setError("请先填写模型名称。");
-        return;
-      }
-
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      setIsStreaming(true);
-      setStatusText("正在重新生成当前消息");
-      setError(null);
-      setSaveMessage(null);
-
-      try {
-        for await (const update of runStreamingChatReroll({
-          assistantMessageIndex: messageIndex,
-          baseUrl: trimmedBaseUrl,
-          apiKey,
-          model: trimmedModel,
-          preset: activePreset,
-          character: activeCharacter,
-          messages,
-          userName: normalizeName(userName, defaultUserName),
-          personaDescription,
-          worldInfoEntries: activeWorldInfoEntries,
-          signal: controller.signal,
-          regexScripts: activeRegexScripts,
-        })) {
-          setMessages(update.messages);
-          setHasUnsavedChanges(true);
-
-          if (update.kind === "started") {
-            setStatusText("已创建新的 swipe，等待模型响应");
-          } else if (update.kind === "delta") {
-            setStatusText("正在接收重新生成内容");
-          } else {
-            setStatusText(
-              update.finishReason
-                ? `重新生成完成：${update.finishReason}`
-                : "重新生成完成",
-            );
-          }
-        }
-      } catch (rerollError: unknown) {
-        if (isAbortError(rerollError)) {
-          setStatusText("已停止重新生成");
-          return;
-        }
-
-        setError(formatChatSendError(rerollError));
-        setStatusText("重新生成失败");
-      } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null;
-        }
-        setIsStreaming(false);
-      }
-    },
-    [
-      activeCharacter,
-      activePreset,
-      activeWorldInfoEntries,
-      apiKey,
-      baseUrl,
-      isCharacterReady,
-      isImportingChat,
-      isPresetReady,
-      isStreaming,
-      messages,
-      model,
-      personaDescription,
-      userName,
-    ],
-  );
-
-  const handleContinueMessage = useCallback(async () => {
-    if (!canContinue || lastAssistantMessageIndex === undefined) {
-      return;
-    }
-
-    const trimmedBaseUrl = baseUrl.trim();
-    const trimmedModel = model.trim();
-
-    if (!trimmedBaseUrl) {
-      setError("请先填写 OpenAI 兼容 API Base URL。");
-      return;
-    }
-
-    if (!trimmedModel) {
-      setError("请先填写模型名称。");
-      return;
-    }
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    setIsStreaming(true);
-    setStatusText("正在继续最后一条回复");
-    setError(null);
-    setSaveMessage(null);
-
-    try {
-      for await (const update of runStreamingChatContinue({
-        assistantMessageIndex: lastAssistantMessageIndex,
-        baseUrl: trimmedBaseUrl,
-        apiKey,
-        model: trimmedModel,
-        preset: activePreset,
-        character: activeCharacter,
-        messages,
-        userName: normalizeName(userName, defaultUserName),
-        personaDescription,
-        worldInfoEntries: activeWorldInfoEntries,
-        signal: controller.signal,
-        regexScripts: activeRegexScripts,
-      })) {
-        setMessages(update.messages);
-        setHasUnsavedChanges(true);
-
-        if (update.kind === "started") {
-          setStatusText("已请求继续回复，等待模型响应");
-        } else if (update.kind === "delta") {
-          setStatusText("正在接收继续内容");
-        } else {
-          setStatusText(
-            update.finishReason
-              ? `继续完成：${update.finishReason}`
-              : "继续完成",
-          );
-        }
-      }
-    } catch (continueError: unknown) {
-      if (isAbortError(continueError)) {
-        setStatusText("已停止继续");
-        return;
-      }
-
-      setError(formatChatSendError(continueError));
-      setStatusText("继续失败");
-    } finally {
-      if (abortControllerRef.current === controller) {
-        abortControllerRef.current = null;
-      }
-      setIsStreaming(false);
-    }
-  }, [
-    activeCharacter,
-    activePreset,
-    activeWorldInfoEntries,
-    apiKey,
-    baseUrl,
-    canContinue,
-    lastAssistantMessageIndex,
-    messages,
-    model,
-    personaDescription,
-    userName,
-  ]);
-
-  const handleRenameArchive = useCallback(
-    async (archive: ChatArchiveSummary) => {
-      if (isStreaming || loadingArchiveId || archiveActionId) {
-        return;
-      }
-
-      const nextName = window.prompt("请输入新的对话存档名称", archive.name);
-
-      if (nextName === null || nextName === archive.name) {
-        return;
-      }
-
-      setArchiveActionId(archive.id);
-      setError(null);
-      setSaveMessage(null);
-      setArchiveError(null);
-
-      try {
-        const renamed = await renameChatArchive({
-          chatId: archive.id,
-          name: nextName,
-        });
-
-        if (loadedArchiveId === archive.id) {
-          setLoadedArchiveName(renamed.summary.name);
-        }
-
-        setSaveMessage(`已重命名存档：${renamed.summary.name}`);
-        setStatusText("对话存档已重命名");
-        await refreshChatArchives({ silent: true });
-      } catch (renameError: unknown) {
-        setArchiveError(formatUnknownError(renameError));
-        setStatusText("重命名存档失败");
-      } finally {
-        setArchiveActionId(null);
-      }
-    },
-    [
-      archiveActionId,
-      isStreaming,
-      loadedArchiveId,
-      loadingArchiveId,
-      refreshChatArchives,
-    ],
-  );
-
-  const handleDeleteArchive = useCallback(
-    async (archive: ChatArchiveSummary) => {
-      if (isStreaming || loadingArchiveId || archiveActionId) {
-        return;
-      }
-
-      if (
-        !window.confirm(
-          `确定删除本地对话存档「${archive.name}」吗？此操作不会修改角色卡、预设或 JSONL 导出文件。`,
-        )
-      ) {
-        return;
-      }
-
-      setArchiveActionId(archive.id);
-      setError(null);
-      setSaveMessage(null);
-      setArchiveError(null);
-
-      try {
-        const deleted = await deleteChatArchive(archive.id);
-
-        if (loadedArchiveId === archive.id) {
-          setLoadedArchiveId(null);
-          setLoadedArchiveName(null);
-          setLoadedChatMetadata(null);
-        }
-
-        setSaveMessage(`已删除存档：${deleted.name}`);
-        setStatusText("对话存档已删除");
-        await refreshChatArchives({ silent: true });
-      } catch (deleteError: unknown) {
-        setArchiveError(formatUnknownError(deleteError));
-        setStatusText("删除存档失败");
-      } finally {
-        setArchiveActionId(null);
-      }
-    },
-    [
-      archiveActionId,
-      isStreaming,
-      loadedArchiveId,
-      loadingArchiveId,
-      refreshChatArchives,
-    ],
-  );
-
   return (
     <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-5 py-6 lg:px-8">
       <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
@@ -1401,26 +535,16 @@ export function ChatScreen() {
           </div>
 
           <div className="min-h-0 px-4 py-4">
-            {messages.length === 0 ? (
-              <EmptyChatState />
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message, index) => (
-                  <ChatBubble
-                    key={`${message.name}-${index}`}
-                    disabled={isStreaming || isImportingChat}
-                    displayRegexScripts={activeRegexScripts}
-                    message={message}
-                    onDelete={() => handleDeleteMessage(index)}
-                    onEdit={() => handleEditMessage(index)}
-                    onHtmlCardAction={handleHtmlCardAction}
-                    onReroll={() => void handleRerollMessage(index)}
-                    onSwipeNext={() => handleSelectMessageSwipe(index, 1)}
-                    onSwipePrevious={() => handleSelectMessageSwipe(index, -1)}
-                  />
-                ))}
-              </div>
-            )}
+            <ChatMessageList
+              disabled={isStreaming || isImportingChat}
+              displayRegexScripts={activeRegexScripts}
+              messages={messages}
+              onDelete={handleDeleteMessage}
+              onEdit={handleEditMessage}
+              onHtmlCardAction={handleHtmlCardAction}
+              onReroll={(messageIndex) => void handleRerollMessage(messageIndex)}
+              onSwipe={handleSelectMessageSwipe}
+            />
           </div>
 
           {error ? (
@@ -1434,199 +558,59 @@ export function ChatScreen() {
             </p>
           ) : null}
 
-          <form
-            className="border-t border-[var(--border-soft)] p-4"
-            ref={chatFormRef}
+          <ChatComposer
+            canSend={canSend}
+            formRef={chatFormRef}
+            inputText={inputText}
+            isStreaming={isStreaming}
+            quickReplySets={visibleQuickReplySets}
+            statusText={statusText}
+            onAppendQuickReply={(message) =>
+              setInputText((current) => appendQuickReplyToInput(current, message))
+            }
+            onInputChange={setInputText}
+            onStop={handleStop}
             onSubmit={(event) => void handleSend(event)}
-          >
-            <label className="sr-only" htmlFor="chat-message-input">
-              输入消息
-            </label>
-            <textarea
-              id="chat-message-input"
-              className="min-h-24 w-full resize-y rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-3 text-sm leading-6 outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-              disabled={isStreaming}
-              placeholder="输入要发送给模型的消息..."
-              value={inputText}
-              onChange={(event) => setInputText(event.target.value)}
-            />
-            {visibleQrSets.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {visibleQrSets.flatMap((qrSet) =>
-                  qrSet.payload.qrList.map((item, i) => (
-                    <button
-                      key={`${qrSet.id}-${i}`}
-                      className="rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:opacity-60"
-                      disabled={isStreaming}
-                      type="button"
-                      onClick={() =>
-                        setInputText((prev) =>
-                          appendQuickReplyToInput(prev, item.message),
-                        )
-                      }
-                    >
-                      {item.label}
-                    </button>
-                  )),
-                )}
-              </div>
-            ) : null}
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p aria-live="polite" className="text-xs text-[var(--text-muted)]">
-                {statusText}
-              </p>
-              <div className="flex gap-2">
-                {isStreaming ? (
-                  <button
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 transition hover:border-red-300"
-                    type="button"
-                    onClick={handleStop}
-                  >
-                    <Square size={15} />
-                    停止
-                  </button>
-                ) : null}
-                <button
-                  className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={!canSend}
-                  type="submit"
-                >
-                  {isStreaming ? (
-                    <Loader2 className="animate-spin" size={16} />
-                  ) : (
-                    <Send size={16} />
-                  )}
-                  发送
-                </button>
-              </div>
-            </div>
-          </form>
+          />
         </div>
 
-        <aside className="flex w-full min-h-0 flex-col gap-4 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
-          <PanelTitle
-            icon={<UserRound size={17} />}
-            title="本次对话对象"
-            subtitle="选择本轮要使用的角色与 ST 原生预设；接口配置请在设置页管理。"
-          />
-          <SelectField
-            disabled={isStreaming || isAssetLoading}
-            label="角色"
-            options={[
-              {
-                label: "默认角色",
-                value: localCharacterOptionId,
-              },
-              ...characters.map((characterAsset) => ({
-                label: characterAsset.name,
-                value: characterAsset.id,
-              })),
-            ]}
-            value={selectedCharacterId}
-            onChange={setSelectedCharacterId}
-          />
-          <SelectField
-            disabled={isStreaming || isAssetLoading}
-            label="预设"
-            options={[
-              {
-                label: "默认 Chat Completion 预设",
-                value: minimalPresetOptionId,
-              },
-              ...presets.map((presetAsset) => ({
-                label: presetAsset.name,
-                value: presetAsset.id,
-              })),
-            ]}
-            value={selectedPresetId}
-            onChange={setSelectedPresetId}
-          />
-          {assetError ? <NoticeText kind="error" text={assetError} /> : null}
-          {characterDetailError ? (
-            <NoticeText kind="error" text={characterDetailError} />
-          ) : null}
-          {presetDetailError ? (
-            <NoticeText kind="error" text={presetDetailError} />
-          ) : null}
-          <AssetSelectionSummary
-            characterDetail={selectedCharacterDetail}
-            isAssetLoading={isAssetLoading}
-            presetDetail={selectedPresetDetail}
-          />
-          {embeddedWorldInfoEntries ? (
-            <NoticeText
-              kind="muted"
-              text={`已启用角色卡内嵌世界书：${embeddedWorldInfoEntries.length} 条。`}
-            />
-          ) : null}
-
-          <div className="border-t border-[var(--border-soft)] pt-4">
-            <PanelTitle
-              icon={<Archive size={17} />}
-              title="本地存档"
-              subtitle="对话会自动保存到 chats store；导入导出仍保持 ST JSONL 兼容。"
-            />
-          </div>
-          {archiveError ? <NoticeText kind="error" text={archiveError} /> : null}
-          <ChatArchiveList
-            archives={chatArchives}
-            isLoading={isArchiveLoading}
-            actionArchiveId={archiveActionId}
-            loadingArchiveId={loadingArchiveId}
-            selectedArchiveId={loadedArchiveId}
-            onLoad={(archiveId) => void handleLoadArchive(archiveId)}
-            onRename={(archive) => void handleRenameArchive(archive)}
-            onDelete={(archive) => void handleDeleteArchive(archive)}
-            disabled={isStreaming || isImportingChat}
-          />
-
-          <div className="border-t border-[var(--border-soft)] pt-4">
-            <PanelTitle
-              icon={<MessageSquare size={17} />}
-              title="首条问候"
-              subtitle="从角色卡 first_mes 与 alternate_greetings 生成 ST 兼容首条消息。"
-            />
-          </div>
-          <GreetingPicker
-            disabled={isStreaming || isImportingChat}
-            greetings={greetingOptions}
-            onApply={handleApplyGreeting}
-          />
-
-          <div className="border-t border-[var(--border-soft)] pt-4">
-            <PanelTitle
-              icon={<Bot size={17} />}
-              title="当前身份"
-              subtitle="未选择导入角色时，可在这里设置临时角色与用户 persona。"
-            />
-          </div>
-          <Field label="用户名" value={userName} onChange={setUserName} />
-          {selectedCharacterId === localCharacterOptionId ? (
-            <>
-              <Field
-                label="角色名"
-                value={characterName}
-                onChange={setCharacterName}
-              />
-              <TextAreaField
-                label="角色描述"
-                value={characterDescription}
-                onChange={setCharacterDescription}
-              />
-            </>
-          ) : null}
-          <TextAreaField
-            label="用户 persona"
-            value={personaDescription}
-            onChange={setPersonaDescription}
-          />
-
-          <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-xs leading-6 text-[var(--text-secondary)]">
-            选中的预设仅按 ST 原生 Chat Completion 结构参与 prompt 组装；不会执行
-            TavernHelper、JS-Slash-Runner 或正则脚本。导入 JSONL 会保存到本地
-            chats store，并替换当前页面消息；普通对话会自动保存。
-          </div>
-        </aside>
+        <ChatSidebar
+          archiveActionId={archiveActionId}
+          archiveError={archiveError}
+          archives={chatArchives}
+          assetError={assetError}
+          characterDescription={characterDescription}
+          characterDetail={selectedCharacterDetail}
+          characterDetailError={characterDetailError}
+          characterName={characterName}
+          characters={characters}
+          disabled={isStreaming || isImportingChat}
+          embeddedWorldInfoCount={embeddedWorldInfoEntries?.length}
+          greetings={greetingOptions}
+          isArchiveLoading={isArchiveLoading}
+          isAssetLoading={isAssetLoading}
+          loadingArchiveId={loadingArchiveId}
+          localCharacterOptionId={localCharacterOptionId}
+          minimalPresetOptionId={minimalPresetOptionId}
+          personaDescription={personaDescription}
+          presetDetail={selectedPresetDetail}
+          presetDetailError={presetDetailError}
+          presets={presets}
+          selectedArchiveId={loadedArchiveId}
+          selectedCharacterId={selectedCharacterId}
+          selectedPresetId={selectedPresetId}
+          userName={userName}
+          onApplyGreeting={handleApplyGreeting}
+          onCharacterDescriptionChange={setCharacterDescription}
+          onCharacterNameChange={setCharacterName}
+          onDeleteArchive={(archive) => void handleDeleteArchive(archive)}
+          onLoadArchive={(archiveId) => void handleLoadArchive(archiveId)}
+          onPersonaDescriptionChange={setPersonaDescription}
+          onRenameArchive={(archive) => void handleRenameArchive(archive)}
+          onSelectedCharacterIdChange={setSelectedCharacterId}
+          onSelectedPresetIdChange={setSelectedPresetId}
+          onUserNameChange={setUserName}
+        />
       </div>
     </section>
   );
