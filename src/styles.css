@@ -75,11 +75,13 @@
 html,
 body,
 #root {
+  height: 100%;
   min-height: 100%;
 }
 
 body {
   margin: 0;
+  overflow: hidden;
   font-family:
     "Noto Sans SC",
     "Microsoft YaHei",
@@ -255,7 +257,7 @@ button {
 
 .chat-html-frame {
   display: block;
-  width: min(100%, 760px);
+  width: 100%;
   max-width: 100%;
   min-height: 180px;
   border: 1px solid var(--border-soft);

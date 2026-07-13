@@ -5,11 +5,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { PanelRightOpen } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
 import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
-import { SummaryTile } from "./ChatScreenPanels";
 import type { ChatHtmlCardAction } from "./chat/ChatMessageBubble";
 import { ChatConversationPane } from "./chat/ChatConversationPane";
 import { ChatSidebar } from "./chat/ChatSidebar";
@@ -18,7 +18,6 @@ import { useChatArchives } from "./chat/useChatArchives";
 import { useChatImportExport } from "./chat/useChatImportExport";
 import { useChatStreamingActions } from "./chat/useChatStreamingActions";
 import {
-  createChatDraftStatus,
   createGreetingChatMessage,
   defaultCharacterName,
   defaultUserName,
@@ -45,6 +44,7 @@ export function ChatScreen() {
   const [loadedArchiveName, setLoadedArchiveName] = useState<string | null>(null);
   const [loadedChatMetadata, setLoadedChatMetadata] =
     useState<ChatMetadataLine | null>(null);
+  const [isContextPanelOpen, setIsContextPanelOpen] = useState(true);
   const lastAutoGreetingCharacterIdRef = useRef<string | null>(null);
 
   const {
@@ -121,11 +121,6 @@ export function ChatScreen() {
     inputText.trim().length > 0 &&
     isCharacterReady &&
     isPresetReady;
-  const draftStatus = createChatDraftStatus({
-    hasUnsavedChanges,
-    loadedArchiveName,
-    messageCount: messages.length,
-  });
   const estimatedTokenCount = useMemo(
     () => estimateChatMessagesTokens(messages),
     [messages],
@@ -406,73 +401,49 @@ export function ChatScreen() {
   );
 
   return (
-    <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-5 py-6 lg:px-8">
-      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
-        <div className="grid gap-4 xl:grid-cols-[minmax(340px,1fr)_minmax(360px,0.85fr)] xl:items-end">
-          <div className="min-w-0">
-            <p className="mb-2 text-sm font-medium text-[var(--accent-strong)]">
-              实时对话
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              连接 OpenAI 兼容接口，执行流式 Chat Completion 回合。
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
-              当前页面可以选择已导入角色和 ST 原生预设用于发送；对话默认只保存在当前页面状态，
-              也可以导入/导出 ST JSONL，并手动保存为兼容快照，不修改角色卡、世界书、预设或正则脚本 payload。
-            </p>
-          </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-            <SummaryTile label="消息行" value={messages.length} />
-            <SummaryTile label="Token 估算" value={`约 ${estimatedTokenCount}`} compact />
-            <SummaryTile label="草稿" value={draftStatus} compact />
-            <SummaryTile label="模型" value={model.trim() || "未设置"} compact />
-          </div>
-        </div>
-      </div>
+    <section className="relative mx-auto flex h-full min-h-0 max-w-[1440px] flex-col px-4 py-3 lg:px-6 lg:py-4">
+      {!isContextPanelOpen ? (
+        <button
+          aria-expanded={false}
+          className="absolute right-4 top-3 z-10 inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] shadow-sm transition hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] lg:right-6 lg:top-4"
+          type="button"
+          onClick={() => setIsContextPanelOpen(true)}
+        >
+          <PanelRightOpen size={15} />
+          打开上下文
+        </button>
+      ) : null}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div
+        className={[
+          "grid min-h-0 flex-1 items-stretch gap-4",
+          isContextPanelOpen ? "xl:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1",
+        ].join(" ")}
+      >
         <ChatConversationPane
-          activeCharacterName={activeCharacter.data.name}
-          canContinue={canContinue}
-          canExport={canExport}
-          canImport={canImport}
-          canSave={canSave}
           canSend={canSend}
-          chatImportInputRef={chatImportInputRef}
           displayRegexScripts={activeRegexScripts}
           error={error}
           formRef={chatFormRef}
-          hasUnsavedChanges={hasUnsavedChanges}
           inputText={inputText}
-          isImporting={isImportingChat}
-          isSaving={isSaving}
           isStreaming={isStreaming}
-          loadedArchiveName={loadedArchiveName}
           messages={messages}
           quickReplySets={visibleQuickReplySets}
-          saveMessage={saveMessage}
           statusText={statusText}
-          tokenCount={estimatedTokenCount}
-          userName={normalizeName(userName, defaultUserName)}
           onAppendQuickReply={(message) =>
             setInputText((current) => appendQuickReplyToInput(current, message))
           }
-          onChatImportChange={(event) => void handleChatImportFileChange(event)}
-          onContinue={() => void handleContinueMessage()}
           onDeleteMessage={handleDeleteMessage}
           onEditMessage={handleEditMessage}
-          onExport={handleExport}
           onHtmlCardAction={handleHtmlCardAction}
           onInputChange={setInputText}
-          onNewChat={handleNewChat}
-          onPickChatImport={handlePickChatImportFile}
           onRerollMessage={(messageIndex) => void handleRerollMessage(messageIndex)}
-          onSave={() => void handleSave()}
           onSelectSwipe={handleSelectMessageSwipe}
           onStop={handleStop}
           onSubmit={(event) => void handleSend(event)}
         />
-        <ChatSidebar
+        {isContextPanelOpen ? <ChatSidebar
+          activeCharacterName={activeCharacter.data.name}
           archiveActionId={archiveActionId}
           archiveError={archiveError}
           archives={chatArchives}
@@ -482,14 +453,23 @@ export function ChatScreen() {
           characterDetailError={characterDetailError}
           characterName={characterName}
           characters={characters}
+          canContinue={canContinue}
+          canExport={canExport}
+          canImport={canImport}
+          canSave={canSave}
+          chatImportInputRef={chatImportInputRef}
           disabled={isStreaming || isImportingChat}
           embeddedWorldInfoCount={embeddedWorldInfoEntries?.length}
           greetings={greetingOptions}
           isArchiveLoading={isArchiveLoading}
           isAssetLoading={isAssetLoading}
+          isImporting={isImportingChat}
+          isSaving={isSaving}
           loadingArchiveId={loadingArchiveId}
           localCharacterOptionId={localCharacterOptionId}
+          loadedArchiveName={loadedArchiveName}
           minimalPresetOptionId={minimalPresetOptionId}
+          model={model}
           personaDescription={personaDescription}
           presetDetail={selectedPresetDetail}
           presetDetailError={presetDetailError}
@@ -497,18 +477,26 @@ export function ChatScreen() {
           selectedArchiveId={loadedArchiveId}
           selectedCharacterId={selectedCharacterId}
           selectedPresetId={selectedPresetId}
+          tokenCount={estimatedTokenCount}
           userName={userName}
+          onClose={() => setIsContextPanelOpen(false)}
           onApplyGreeting={handleApplyGreeting}
           onCharacterDescriptionChange={setCharacterDescription}
           onCharacterNameChange={setCharacterName}
+          onChatImportChange={(event) => void handleChatImportFileChange(event)}
           onDeleteArchive={(archive) => void handleDeleteArchive(archive)}
+          onContinue={() => void handleContinueMessage()}
+          onExport={handleExport}
           onLoadArchive={(archiveId) => void handleLoadArchive(archiveId)}
+          onNewChat={handleNewChat}
           onPersonaDescriptionChange={setPersonaDescription}
+          onPickChatImport={handlePickChatImportFile}
           onRenameArchive={(archive) => void handleRenameArchive(archive)}
           onSelectedCharacterIdChange={setSelectedCharacterId}
           onSelectedPresetIdChange={setSelectedPresetId}
+          onSave={() => void handleSave()}
           onUserNameChange={setUserName}
-        />
+        /> : null}
       </div>
     </section>
   );

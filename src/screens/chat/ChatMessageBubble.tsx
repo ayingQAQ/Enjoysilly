@@ -143,10 +143,10 @@ export function ChatBubble({
   );
 
   return (
-    <article className={["flex", isUser ? "justify-end" : "justify-start"].join(" ")}>
+    <article className={["group flex", isUser ? "justify-end" : "justify-start"].join(" ")}>
       <div
         className={[
-          "max-w-[88%] rounded-lg px-4 py-3 shadow-sm",
+          "max-w-[96%] rounded-2xl px-4 py-3 shadow-sm sm:max-w-[94%]",
           isUser
             ? "bg-[var(--accent)] text-white"
             : "border border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-primary)]",
@@ -158,7 +158,7 @@ export function ChatBubble({
             {message.send_date ? <span>{message.send_date}</span> : null}
             {content ? <span>约 {estimatedTokens} token</span> : null}
           </div>
-          <div className="flex shrink-0 gap-1">
+          <div className="flex shrink-0 gap-1 opacity-80 transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             <button
               className={[
                 "rounded border px-1.5 py-0.5 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
