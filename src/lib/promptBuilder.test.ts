@@ -108,13 +108,7 @@ function loadRealPresetFixture(): ChatCompletionPreset {
 }
 
 function loadRealCharacterFixture(): CharacterCard {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.toLowerCase().endsWith(".png"),
-  );
-
-  if (!fileName) {
-    throw new Error("Missing PNG character fixture.");
-  }
+  const fileName = "红楼.png";
 
   return importCharacterCardFromBytes(
     readFileSync(join(fixturesDir, fileName)),

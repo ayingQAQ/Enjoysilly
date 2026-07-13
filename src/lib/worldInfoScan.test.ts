@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -11,15 +11,9 @@ import { scanWorldInfo } from "./worldInfoScan";
 const fixturesDir = join(process.cwd(), "test-fixtures");
 
 function loadEmbeddedWorldInfoEntries(): PortableWorldInfoEntry[] {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.toLowerCase().endsWith(".png"),
+  const card = decodeCharacterCardFromPng(
+    readFileSync(join(fixturesDir, "红楼.png")),
   );
-
-  if (!fileName) {
-    throw new Error("Missing PNG card fixture.");
-  }
-
-  const card = decodeCharacterCardFromPng(readFileSync(join(fixturesDir, fileName)));
 
   return card.data.character_book?.entries ?? [];
 }

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -14,15 +14,7 @@ import {
 const fixturesDir = join(process.cwd(), "test-fixtures");
 
 function loadCardFixture() {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.endsWith(".png"),
-  );
-
-  if (!fileName) {
-    throw new Error("Missing PNG card fixture.");
-  }
-
-  return decodeCharacterCardFromPng(readFileSync(join(fixturesDir, fileName)));
+  return decodeCharacterCardFromPng(readFileSync(join(fixturesDir, "红楼.png")));
 }
 
 describe("world info dialect mapping", () => {

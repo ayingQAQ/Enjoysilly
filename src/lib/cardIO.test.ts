@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -13,24 +13,12 @@ import {
 } from "./cardIO";
 
 const fixturesDir = join(process.cwd(), "test-fixtures");
-
-function findFixture(extension: string): string {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.endsWith(extension),
-  );
-
-  if (!fileName) {
-    throw new Error(`Missing ${extension} fixture.`);
-  }
-
-  return join(fixturesDir, fileName);
-}
+const characterFixturePath = join(fixturesDir, "红楼.png");
 
 describe("character card IO", () => {
   it("imports a PNG character card through the unified entry point", () => {
-    const filePath = findFixture(".png");
     const imported = importCharacterCardFromBytes(
-      readFileSync(filePath),
+      readFileSync(characterFixturePath),
       "红楼.png",
     );
 
@@ -82,8 +70,7 @@ describe("character card IO", () => {
   });
 
   it("exports a PNG character card through the card IO layer", () => {
-    const filePath = findFixture(".png");
-    const bytes = readFileSync(filePath);
+    const bytes = readFileSync(characterFixturePath);
     const imported = importCharacterCardFromBytes(bytes, "红楼.png");
     const updated = {
       ...imported.card,

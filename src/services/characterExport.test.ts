@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { deleteDB } from "idb";
@@ -31,15 +31,7 @@ function createTestDatabaseName(): string {
 }
 
 function findPngFixture(): string {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.endsWith(".png"),
-  );
-
-  if (!fileName) {
-    throw new Error("Missing PNG fixture.");
-  }
-
-  return join(fixturesDir, fileName);
+  return join(fixturesDir, "红楼.png");
 }
 
 describe("character export service", () => {

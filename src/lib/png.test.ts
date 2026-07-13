@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -10,22 +10,11 @@ import {
 } from "./png";
 
 const fixturesDir = join(process.cwd(), "test-fixtures");
-
-function findFixture(extension: string): string {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.endsWith(extension),
-  );
-
-  if (!fileName) {
-    throw new Error(`Missing ${extension} fixture.`);
-  }
-
-  return join(fixturesDir, fileName);
-}
+const characterFixturePath = join(fixturesDir, "红楼.png");
 
 describe("PNG character card parsing", () => {
   it("reads SillyTavern chara tEXt chunks from the real card fixture", () => {
-    const bytes = readFileSync(findFixture(".png"));
+    const bytes = readFileSync(characterFixturePath);
     const textChunks = readPngTextChunks(bytes);
 
     expect(textChunks).toHaveLength(1);
@@ -33,7 +22,7 @@ describe("PNG character card parsing", () => {
   });
 
   it("decodes the real card fixture without losing measured fields", () => {
-    const bytes = readFileSync(findFixture(".png"));
+    const bytes = readFileSync(characterFixturePath);
     const card = decodeCharacterCardFromPng(bytes);
 
     expect(card.spec).toBe("chara_card_v2");
@@ -47,7 +36,7 @@ describe("PNG character card parsing", () => {
   });
 
   it("replaces the character card tEXt chunk while preserving image chunks", () => {
-    const bytes = readFileSync(findFixture(".png"));
+    const bytes = readFileSync(characterFixturePath);
     const card = decodeCharacterCardFromPng(bytes);
     const updatedCard = {
       ...card,

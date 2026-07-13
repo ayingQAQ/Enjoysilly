@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { deleteDB } from "idb";
@@ -10,6 +10,7 @@ import { getCharacter, getWorldInfo, openMySillyDatabase } from "../lib/db";
 import { createStoredCharacter, importCharacterToDatabase } from "./characterImport";
 
 const fixturesDir = join(process.cwd(), "test-fixtures");
+const characterFixturePath = join(fixturesDir, "红楼.png");
 const testDatabaseNames: string[] = [];
 
 afterEach(async () => {
@@ -20,18 +21,6 @@ function createTestDatabaseName(): string {
   const name = `my_silly_character_import_${crypto.randomUUID()}`;
   testDatabaseNames.push(name);
   return name;
-}
-
-function findFixture(extension: string): string {
-  const fileName = readdirSync(fixturesDir).find((name) =>
-    name.endsWith(extension),
-  );
-
-  if (!fileName) {
-    throw new Error(`Missing ${extension} fixture.`);
-  }
-
-  return join(fixturesDir, fileName);
 }
 
 describe("character import service", () => {
@@ -60,7 +49,7 @@ describe("character import service", () => {
 
   it("imports a real PNG card and saves it to IndexedDB", async () => {
     const database = await openMySillyDatabase(createTestDatabaseName());
-    const bytes = readFileSync(findFixture(".png"));
+    const bytes = readFileSync(characterFixturePath);
 
     try {
       const result = await importCharacterToDatabase(bytes, "card.png", {
