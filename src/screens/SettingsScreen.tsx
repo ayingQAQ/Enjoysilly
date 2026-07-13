@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Download, Palette, PlugZap, Save, Settings, Upload, UserRound, Wifi, X } from "lucide-react";
 
 import {
@@ -23,21 +23,13 @@ import {
 } from "../services/settingsStore";
 import { listQuickReplySets, type StoredQuickReplySet } from "../lib/db";
 import type { AppFontScale, AppSettings, AppTheme, UserPersona } from "../types/settings";
-
-interface SettingsFormState {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  personaName: string;
-  personaDescription: string;
-  defaultPresetId: string;
-  defaultWorldId: string;
-  defaultQuickReplySetId: string;
-  theme: AppTheme;
-  fontScale: AppFontScale;
-}
-
-const emptySelection = "";
+import { SelectField, SettingsPanel, TextField } from "./settings/SettingsFields";
+import {
+  createFormState,
+  createInitialFormState,
+  optionalId,
+  type SettingsFormState,
+} from "./settings/settingsForm";
 
 export function SettingsScreen() {
   const [form, setForm] = useState<SettingsFormState>(() => createInitialFormState());
@@ -498,151 +490,5 @@ export function SettingsScreen() {
         ) : null}
       </div>
     </section>
-  );
-}
-
-function createInitialFormState(): SettingsFormState {
-  return createFormState(
-    {
-      api: {
-        baseUrl: defaultApiBaseUrl,
-        apiKey: "",
-        model: defaultApiModel,
-      },
-      theme: "system",
-      fontScale: "md",
-    },
-    {
-      id: "persona_default",
-      name: "User",
-      description: "",
-      isDefault: true,
-    },
-  );
-}
-
-function createFormState(
-  settings: AppSettings,
-  persona: UserPersona,
-  availableIds?: {
-    presetIds: string[];
-    worldIds: string[];
-    quickReplySetIds: string[];
-  },
-): SettingsFormState {
-  return {
-    baseUrl: settings.api.baseUrl,
-    apiKey: settings.api.apiKey ?? "",
-    model: settings.api.model,
-    personaName: persona.name,
-    personaDescription: persona.description ?? "",
-    defaultPresetId: keepExistingAssetId(settings.defaultPresetId, availableIds?.presetIds),
-    defaultWorldId: keepExistingAssetId(settings.defaultWorldId, availableIds?.worldIds),
-    defaultQuickReplySetId: keepExistingAssetId(
-      settings.defaultQuickReplySetId,
-      availableIds?.quickReplySetIds,
-    ),
-    theme: settings.theme,
-    fontScale: settings.fontScale,
-  };
-}
-
-function keepExistingAssetId(
-  selectedId: string | undefined,
-  availableIds: string[] | undefined,
-): string {
-  if (!selectedId) return emptySelection;
-  if (!availableIds) return selectedId;
-
-  return availableIds.includes(selectedId) ? selectedId : emptySelection;
-}
-
-function optionalId(value: string): string | undefined {
-  const normalized = value.trim();
-
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function SettingsPanel({
-  icon,
-  title,
-  subtitle,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  subtitle: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
-          {icon}
-        </div>
-        <div>
-          <h2 className="text-base font-semibold">{title}</h2>
-          <p className="mt-1 text-xs leading-6 text-[var(--text-muted)]">{subtitle}</p>
-        </div>
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: "text" | "password";
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="font-medium">{label}</span>
-      <input
-        className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-  emptyLabel,
-}: {
-  label: string;
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  onChange: (value: string) => void;
-  emptyLabel?: string;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="font-medium">{label}</span>
-      <select
-        className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {emptyLabel ? <option value={emptySelection}>{emptyLabel}</option> : null}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </label>
   );
 }

@@ -5,25 +5,13 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Download,
-  Loader2,
-  MessageSquare,
-  Plus,
-  RotateCcw,
-  Save,
-  Upload,
-} from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
 import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
-import {
-  SummaryTile,
-  type ChatHtmlCardAction,
-} from "./ChatScreenPanels";
-import { ChatComposer } from "./chat/ChatComposer";
-import { ChatMessageList } from "./chat/ChatMessageList";
+import { SummaryTile } from "./ChatScreenPanels";
+import type { ChatHtmlCardAction } from "./chat/ChatMessageBubble";
+import { ChatConversationPane } from "./chat/ChatConversationPane";
 import { ChatSidebar } from "./chat/ChatSidebar";
 import { useChatAssets } from "./chat/useChatAssets";
 import { useChatArchives } from "./chat/useChatArchives";
@@ -443,137 +431,47 @@ export function ChatScreen() {
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="flex w-full min-h-0 flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-[var(--border-soft)] px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--accent-weak)] text-[var(--accent-strong)]">
-                <MessageSquare size={18} />
-              </div>
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold">本地对话窗口</h2>
-                <p className="truncate text-xs text-[var(--text-muted)]">
-                  {activeCharacter.data.name} ·{" "}
-                  {normalizeName(userName, defaultUserName)} · 约{" "}
-                  {estimatedTokenCount} token
-                </p>
-                {loadedArchiveName ? (
-                  <p className="truncate text-xs text-[var(--text-muted)]">
-                    已加载：{loadedArchiveName}
-                  </p>
-                ) : null}
-                <p className="truncate text-xs text-[var(--text-muted)]">
-                  {messages.length > 0
-                    ? hasUnsavedChanges
-                      ? "正在等待自动保存"
-                      : "已自动保存到本地"
-                    : "新对话会在出现消息后自动保存"}
-                </p>
-              </div>
-            </div>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              <input
-                ref={chatImportInputRef}
-                className="hidden"
-                type="file"
-                accept=".jsonl,.json,application/json,application/x-ndjson,text/plain"
-                onChange={(event) => void handleChatImportFileChange(event)}
-              />
-              <button
-                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!canImport}
-                type="button"
-                onClick={handlePickChatImportFile}
-              >
-                {isImportingChat ? (
-                  <Loader2 className="animate-spin" size={14} />
-                ) : (
-                  <Upload size={14} />
-                )}
-                导入
-              </button>
-              <button
-                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!canExport}
-                type="button"
-                onClick={handleExport}
-              >
-                <Download size={14} />
-                导出
-              </button>
-              <button
-                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!canContinue}
-                type="button"
-                onClick={() => void handleContinueMessage()}
-              >
-                <RotateCcw size={14} />
-                继续
-              </button>
-              <button
-                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!canSave}
-                type="button"
-                onClick={() => void handleSave()}
-              >
-                {isSaving ? (
-                  <Loader2 className="animate-spin" size={14} />
-                ) : (
-                  <Save size={14} />
-                )}
-                保存
-              </button>
-              <button
-                className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isStreaming || isImportingChat}
-                type="button"
-                onClick={handleNewChat}
-              >
-                <Plus size={14} />
-                新建
-              </button>
-            </div>
-          </div>
-
-          <div className="min-h-0 px-4 py-4">
-            <ChatMessageList
-              disabled={isStreaming || isImportingChat}
-              displayRegexScripts={activeRegexScripts}
-              messages={messages}
-              onDelete={handleDeleteMessage}
-              onEdit={handleEditMessage}
-              onHtmlCardAction={handleHtmlCardAction}
-              onReroll={(messageIndex) => void handleRerollMessage(messageIndex)}
-              onSwipe={handleSelectMessageSwipe}
-            />
-          </div>
-
-          {error ? (
-            <p className="mx-4 mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700">
-              {error}
-            </p>
-          ) : null}
-          {saveMessage ? (
-            <p className="mx-4 mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-6 text-emerald-700">
-              {saveMessage}
-            </p>
-          ) : null}
-
-          <ChatComposer
-            canSend={canSend}
-            formRef={chatFormRef}
-            inputText={inputText}
-            isStreaming={isStreaming}
-            quickReplySets={visibleQuickReplySets}
-            statusText={statusText}
-            onAppendQuickReply={(message) =>
-              setInputText((current) => appendQuickReplyToInput(current, message))
-            }
-            onInputChange={setInputText}
-            onStop={handleStop}
-            onSubmit={(event) => void handleSend(event)}
-          />
-        </div>
-
+        <ChatConversationPane
+          activeCharacterName={activeCharacter.data.name}
+          canContinue={canContinue}
+          canExport={canExport}
+          canImport={canImport}
+          canSave={canSave}
+          canSend={canSend}
+          chatImportInputRef={chatImportInputRef}
+          displayRegexScripts={activeRegexScripts}
+          error={error}
+          formRef={chatFormRef}
+          hasUnsavedChanges={hasUnsavedChanges}
+          inputText={inputText}
+          isImporting={isImportingChat}
+          isSaving={isSaving}
+          isStreaming={isStreaming}
+          loadedArchiveName={loadedArchiveName}
+          messages={messages}
+          quickReplySets={visibleQuickReplySets}
+          saveMessage={saveMessage}
+          statusText={statusText}
+          tokenCount={estimatedTokenCount}
+          userName={normalizeName(userName, defaultUserName)}
+          onAppendQuickReply={(message) =>
+            setInputText((current) => appendQuickReplyToInput(current, message))
+          }
+          onChatImportChange={(event) => void handleChatImportFileChange(event)}
+          onContinue={() => void handleContinueMessage()}
+          onDeleteMessage={handleDeleteMessage}
+          onEditMessage={handleEditMessage}
+          onExport={handleExport}
+          onHtmlCardAction={handleHtmlCardAction}
+          onInputChange={setInputText}
+          onNewChat={handleNewChat}
+          onPickChatImport={handlePickChatImportFile}
+          onRerollMessage={(messageIndex) => void handleRerollMessage(messageIndex)}
+          onSave={() => void handleSave()}
+          onSelectSwipe={handleSelectMessageSwipe}
+          onStop={handleStop}
+          onSubmit={(event) => void handleSend(event)}
+        />
         <ChatSidebar
           archiveActionId={archiveActionId}
           archiveError={archiveError}

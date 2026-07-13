@@ -27,7 +27,8 @@ import {
   isAbortError,
   normalizeName,
 } from "./chatScreenHelpers";
-import { ChatBubble, EmptyChatState, Field, PanelTitle } from "./ChatScreenPanels";
+import { EmptyChatState, Field, PanelTitle } from "./ChatScreenPanels";
+import { ChatBubble } from "./chat/ChatMessageBubble";
 import type { ChatMessageLine } from "../types/chat";
 import type { GroupConfig } from "../types/group";
 
