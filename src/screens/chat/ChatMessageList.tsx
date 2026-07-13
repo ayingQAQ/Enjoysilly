@@ -1,10 +1,7 @@
 import type { RegexScriptLike } from "../../lib/regexEngine";
 import type { ChatMessageLine } from "../../types/chat";
-import {
-  ChatBubble,
-  EmptyChatState,
-  type ChatHtmlCardAction,
-} from "../ChatScreenPanels";
+import { EmptyChatState } from "../ChatScreenPanels";
+import { ChatBubble, type ChatHtmlCardAction } from "./ChatMessageBubble";
 
 interface ChatMessageListProps {
   disabled: boolean;
