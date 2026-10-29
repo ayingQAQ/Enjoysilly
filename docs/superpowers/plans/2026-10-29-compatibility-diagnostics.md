@@ -39,4 +39,8 @@
 - [x] Test preview includes processed input/current swipe, final prompt regex, source labels, deterministic snapshot reuse, and no diagnostic fields in model body.
 - [x] Implement shared prep and stale-result guarding; modal preview with explicit send/cancel; retain ordinary send.
 - [x] Browser test local mock: preview causes no request or chat write; confirmed body equals displayed snapshot, API key absent; changed inputs rebuild; Escape focus and narrow layout.
-- [ ] Run all unit/build/browser/layout tests in Edge and Chrome; document matrix/limits/progress; final read-only review, resolve significant findings, commit/merge/push.
+- [x] Run all unit/build/browser/layout tests in Edge and Chrome; document matrix/limits/progress; final read-only review, resolve significant findings, commit/merge/push.
+
+## Delivery evidence
+
+2026-10-29: 402 tests / 71 files, production build, Edge and Chrome business/layout/preview suites passed. Independent review found no Critical/Important issues; portable-field alias diagnostic detail is deferred. Feature and verification commits through a028472 were fast-forward merged and pushed to origin/main; remote SHA matched. No release tag. See docs/compatibility-matrix.md for execution limits.
