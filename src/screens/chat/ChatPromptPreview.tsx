@@ -16,6 +16,7 @@ export function ChatPromptPreview({ data, error, onClose, onSend }: {
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       {error ? <p role="alert">{error}</p> : !prepared ? <p role="status">正在组装提示词…</p> : <>
         <p className="mb-4 text-sm">{prepared.messages.length} 条请求消息 · 约 {tokens} token（启发式估算，非精确 tokenizer，不包含输出）</p>
+        {prepared.budget && <p role="status" className="mb-4 rounded-lg bg-[var(--surface-muted)] p-3 text-sm">上下文上限 {prepared.budget.contextLimit} · 输出预留 {prepared.budget.outputReserve} · 输入约 {prepared.budget.estimatedInputTokens} / {prepared.budget.inputLimit}。本次省略最旧 {prepared.budget.omittedMessages} 条历史；原存档不变。</p>}
         <h3 className="mb-2 font-semibold">实际消息顺序</h3>
         <p className="mb-3 text-xs text-[var(--text-secondary)]">以下为宏展开和提示词正则处理后的正文。聊天历史按当前实现合并为 marker 文本；请勿向模型发送敏感信息。</p>
         <ol className="space-y-3">{prepared.messages.map((message, index) => <li key={index} className="rounded-lg border border-[var(--border-soft)] p-3">

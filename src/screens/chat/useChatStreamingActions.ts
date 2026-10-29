@@ -9,7 +9,7 @@ import {
   type SetStateAction,
 } from "react";
 import { useChatPromptPreview } from "./useChatPromptPreview";
-import type { PreparedStreamingChatTurn } from "../../lib/chatStreaming";
+import { prepareStreamingChatTurn, type PreparedStreamingChatTurn } from "../../lib/chatStreaming";
 
 import {
   runStreamingChatContinue,
@@ -103,12 +103,19 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
       input.setStatusText("正在请求模型");
       input.setError(null);
       input.setSaveMessage(null);
-      input.setLoadedChatMetadata(null);
-      input.setInputText("");
 
       try {
+        const preparedTurn = inspected ?? await prepareStreamingChatTurn({
+          model: trimmedModel, preset: input.activePreset, character: input.activeCharacter,
+          messages: input.messages, userName: normalizeName(input.userName, defaultUserName), userText,
+          personaDescription: input.personaDescription, worldInfoEntries: input.activeWorldInfoEntries,
+          regexScripts: input.activeRegexScripts,
+        });
+        if (controller.signal.aborted) return;
+        if (!inspected && preparedTurn.prepared.budget?.omittedMessages && !window.confirm(`上下文预算将省略最旧 ${preparedTurn.prepared.budget.omittedMessages} 条历史（原存档不变）。是否发送？可取消后查看提示词预览。`)) return;
+        input.setInputText("");
         for await (const update of runStreamingChatTurn({
-          preparedTurn: inspected,
+          preparedTurn,
           baseUrl: trimmedBaseUrl,
           apiKey: input.apiKey,
           model: trimmedModel,
