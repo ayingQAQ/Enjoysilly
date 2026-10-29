@@ -38,4 +38,6 @@
 **Interfaces:** searchChatMessages(messages,query) returns source indexes; createChatBranch(snapshot, sourceId/version/index) atomic independent record, local branch provenance.
 - [x] Test current swipe/Chinese/emoji/1000 messages; branch immutability/conflicts/missing source/provenance after save; run RED.
 - [x] Implement search location and explicit branch button at hit; service writes fresh ID without changing active session; browser verifies original remains and new branch restores; GREEN; commit.
-- [ ] Full unit/build and Edge/Chrome browser/layout/preview/new long-chat regressions; docs/progress; fresh independent review; fix important findings; merge main, retest, push.
+- [x] Full unit/build and Edge/Chrome browser/layout/preview/new long-chat regressions; docs/progress; fresh independent review; fix important findings; merge main, retest, push.
+
+Delivery: 416 tests / 75 files and production build passed on merged main; Edge and Chrome passed all four browser suites. Independent review's one Important random-macro finding fixed with RED→GREEN regression; no outstanding blockers or deferred minors. Implementation d1209c5 was pushed and remote SHA verified on 2026-10-29. This is the phase4 priority batch, not a complete v0.7 release.
