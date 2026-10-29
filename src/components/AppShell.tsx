@@ -1,4 +1,7 @@
 import { ChevronRight, Moon } from "lucide-react";
+import { useState } from "react";
+import { loadAppSettings, saveAppSettings } from "../services/settingsStore";
+import { applyAppAppearance } from "../services/appAppearance";
 
 import { workspaceSections } from "../data/workspace";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
@@ -16,6 +19,8 @@ const sectionGroups: Array<{ label: string; ids: WorkspaceSectionId[] }> = [
 ];
 
 export function AppShell({ children }: AppShellProps) {
+  const [themeBusy, setThemeBusy] = useState(false);
+  const [themeError, setThemeError] = useState("");
   const activeSection = useWorkspaceStore((state) => state.activeSection);
   const setActiveSection = useWorkspaceStore((state) => state.setActiveSection);
 
@@ -39,12 +44,25 @@ export function AppShell({ children }: AppShellProps) {
           <button
             className="grid size-9 place-items-center rounded-lg text-[var(--text-secondary)] transition hover:bg-[var(--surface-muted)]"
             type="button"
-            aria-label="切换主题占位"
+            aria-label="切换明暗主题"
+            title="切换明暗主题"
+            disabled={themeBusy}
+            onClick={async () => {
+              setThemeBusy(true); setThemeError("");
+              try {
+                const settings = await loadAppSettings();
+                const dark = settings.theme === "dark" || (settings.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+                const next = await saveAppSettings({ ...settings, theme: dark ? "light" : "dark" });
+                applyAppAppearance(next);
+              } catch { setThemeError("主题保存失败，请重试。"); }
+              finally { setThemeBusy(false); }
+            }}
           >
             <Moon size={17} />
           </button>
         </div>
       </header>
+      {themeError ? <p role="alert" className="shrink-0 px-4 text-red-600">{themeError}</p> : null}
 
       <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2 lg:hidden">
         {workspaceSections.map((section) => {
@@ -72,7 +90,7 @@ export function AppShell({ children }: AppShellProps) {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[232px_minmax(0,1fr)]">
         <aside className="hidden min-h-0 border-r border-[var(--border-soft)] bg-[var(--surface)] lg:flex lg:flex-col">
-          <nav aria-label="工作区导航" className="space-y-5 p-3 pt-5">
+          <nav aria-label="工作区导航" className="min-h-0 overflow-y-auto overscroll-contain space-y-5 p-3 pt-5">
             {sectionGroups.map((group) => (
               <div key={group.label}>
                 <p className="px-2 pb-1.5 text-[11px] font-medium tracking-[0.12em] text-[var(--text-muted)]">

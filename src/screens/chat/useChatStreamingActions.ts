@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type Dispatch,
@@ -54,6 +55,7 @@ interface UseChatStreamingActionsInput {
 export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
   const lastAssistantMessageIndex = getLastAssistantMessageIndex(input.messages);
   const canContinue =
     !isStreaming &&
@@ -71,7 +73,7 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
       const trimmedBaseUrl = input.baseUrl.trim();
       const trimmedModel = input.model.trim();
 
-      if (!userText || isStreaming) return;
+      if (!userText || isStreaming || input.isImportingChat) return;
       if (!input.isCharacterReady || !input.isPresetReady) {
         input.setError("正在读取选中的角色或预设，请稍后再发送。");
         return;

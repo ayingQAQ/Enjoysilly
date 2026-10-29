@@ -4,6 +4,7 @@ import type { FormEvent, RefObject } from "react";
 import type { StoredQuickReplySet } from "../../lib/db";
 
 interface ChatComposerProps {
+  disabled?: boolean;
   canSend: boolean;
   formRef: RefObject<HTMLFormElement>;
   inputText: string;
@@ -17,6 +18,7 @@ interface ChatComposerProps {
 }
 
 export function ChatComposer({
+  disabled = false,
   canSend,
   formRef,
   inputText,
@@ -46,7 +48,7 @@ export function ChatComposer({
               <button
                 key={`${quickReplySet.id}-${index}`}
                 className="rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:opacity-60"
-                disabled={isStreaming}
+                disabled={isStreaming || disabled}
                 type="button"
                 onClick={() => onAppendQuickReply(item.message)}
               >
@@ -60,7 +62,7 @@ export function ChatComposer({
         <textarea
           id="chat-message-input"
           className="h-14 min-h-14 flex-1 resize-none rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-weak)]"
-          disabled={isStreaming}
+          disabled={isStreaming || disabled}
           placeholder="输入消息..."
           rows={1}
           value={inputText}

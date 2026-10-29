@@ -9,6 +9,7 @@ import { ChatMessageList } from "./ChatMessageList";
 import type { ChatHtmlCardAction } from "./ChatMessageBubble";
 
 interface ChatConversationPaneProps {
+  disabled?: boolean;
   canSend: boolean;
   displayRegexScripts: RegexScriptLike[];
   error: string | null;
@@ -30,7 +31,7 @@ interface ChatConversationPaneProps {
 }
 
 export function ChatConversationPane(props: ChatConversationPaneProps) {
-  const disabled = props.isStreaming;
+  const disabled = props.isStreaming || Boolean(props.disabled);
 
   return (
     <div className="flex min-h-[620px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm xl:h-full xl:min-h-0">
@@ -61,6 +62,7 @@ export function ChatConversationPane(props: ChatConversationPaneProps) {
       </div>
       {props.error ? <Notice tone="error" text={props.error} /> : null}
       <ChatComposer
+        disabled={props.disabled}
         canSend={props.canSend}
         formRef={props.formRef}
         inputText={props.inputText}

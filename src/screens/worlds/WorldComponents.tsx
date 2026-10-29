@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 
 import type { WorldInfoAssetSummary } from "../../services/assetCatalog";
 import type {
@@ -32,9 +32,11 @@ export function MiniMetric({ label, value }: { label: string; value: number }) {
 export function WorldInfoDetailDrawer({
   detail,
   onClose,
+  onEdit,
 }: {
   detail: WorldInfoDetailSummary;
   onClose: () => void;
+  onEdit: () => void;
 }) {
   return (
     <aside
@@ -52,14 +54,24 @@ export function WorldInfoDetailDrawer({
             IndexedDB。
           </p>
         </div>
-        <button
-          aria-label="关闭世界书详情"
-          className="grid size-9 shrink-0 place-items-center rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-primary)] transition hover:border-[var(--border-strong)]"
-          type="button"
-          onClick={onClose}
-        >
-          <X size={16} />
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--accent)] px-3 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+            type="button"
+            onClick={onEdit}
+          >
+            <Pencil size={15} />
+            编辑
+          </button>
+          <button
+            aria-label="关闭世界书详情"
+            className="grid size-9 place-items-center rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] text-[var(--text-primary)] transition hover:border-[var(--border-strong)]"
+            type="button"
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   Download,
   Eye,
   FileJson2,
   ImagePlus,
+  Pencil,
   Search,
   SlidersHorizontal,
   Star,
@@ -27,6 +28,11 @@ import {
 } from "../services/characterExport";
 import { importCharacterFilesToDatabase } from "../services/characterFileImport";
 import {
+  updateCharacterFromDraft,
+  type CharacterAvatarReplacement,
+  type CharacterEditDraft,
+} from "../services/characterEdit";
+import {
   CharacterAvatar,
   CharacterDetailDrawer,
   DetailLine,
@@ -37,6 +43,11 @@ import {
   SummaryTile,
   type CharacterSortMode,
 } from "./characters/CharacterComponents";
+
+const CharacterEditorDrawer = lazy(async () => {
+  const module = await import("./characters/CharacterEditorDrawer");
+  return { default: module.CharacterEditorDrawer };
+});
 
 interface CharacterNotice {
   kind: "success" | "error";
@@ -50,6 +61,8 @@ export function CharactersScreen() {
   const [isImporting, setIsImporting] = useState(false);
   const [busyCharacterId, setBusyCharacterId] = useState<string | null>(null);
   const [selectedCharacterDetail, setSelectedCharacterDetail] =
+    useState<CharacterDetailSummary | null>(null);
+  const [editingCharacterDetail, setEditingCharacterDetail] =
     useState<CharacterDetailSummary | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -263,6 +276,66 @@ export function CharactersScreen() {
     setDetailError(null);
   }, []);
 
+  const handleOpenCharacterEditor = useCallback(async (characterId: string) => {
+    setIsDetailLoading(true);
+    setDetailError(null);
+
+    try {
+      const detail = await loadCharacterDetailSummary(characterId);
+
+      setSelectedCharacterDetail(null);
+      setEditingCharacterDetail(detail);
+    } catch (detailLoadError: unknown) {
+      setDetailError(
+        detailLoadError instanceof Error
+          ? detailLoadError.message
+          : String(detailLoadError),
+      );
+    } finally {
+      setIsDetailLoading(false);
+    }
+  }, []);
+
+  const handleSaveCharacter = useCallback(
+    async (
+      draft: CharacterEditDraft,
+      avatarReplacement?: CharacterAvatarReplacement,
+    ) => {
+      if (!editingCharacterDetail) {
+        return;
+      }
+
+      setBusyCharacterId(editingCharacterDetail.id);
+      setNotice(null);
+
+      try {
+        const updated = await updateCharacterFromDraft(
+          editingCharacterDetail.id,
+          draft,
+          { avatarReplacement },
+        );
+
+        await refreshCharacters();
+        setEditingCharacterDetail(null);
+        setNotice({
+          kind: "success",
+          message: avatarReplacement
+            ? `已保存角色卡并更新头像：${updated.name}。未知字段与 extensions 均已保留。`
+            : `已保存角色卡：${updated.name}。未知字段、extensions 与原始 PNG 载体均已保留。`,
+        });
+      } catch (saveError: unknown) {
+        setNotice({
+          kind: "error",
+          message: saveError instanceof Error ? saveError.message : String(saveError),
+        });
+        throw saveError;
+      } finally {
+        setBusyCharacterId(null);
+      }
+    },
+    [editingCharacterDetail, refreshCharacters],
+  );
+
   return (
     <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-5 lg:px-8">
       <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
@@ -276,7 +349,7 @@ export function CharactersScreen() {
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
               管理本地 SillyTavern PNG / JSON 角色卡，保留未知字段、extensions
-              与内嵌世界书，导入后可查看详情并按原始 payload 导出。
+              与内嵌世界书，可安全编辑常用字段并继续导出兼容文件。
             </p>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -477,13 +550,20 @@ export function CharactersScreen() {
                     ) : null}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-[var(--border-soft)] pt-3">
+                  <div className="mt-3 grid grid-cols-5 gap-1.5 border-t border-[var(--border-soft)] pt-3">
                     <IconActionButton
                       disabled={isCharacterActionBusy || isDetailLoading}
                       label="查看详情"
                       onClick={() => void handleOpenCharacterDetail(character.id)}
                     >
                       <Eye size={14} />
+                    </IconActionButton>
+                    <IconActionButton
+                      disabled={isCharacterActionBusy || isDetailLoading}
+                      label="编辑角色卡"
+                      onClick={() => void handleOpenCharacterEditor(character.id)}
+                    >
+                      <Pencil size={14} />
                     </IconActionButton>
                     <IconActionButton
                       disabled={isCharacterActionBusy}
@@ -517,7 +597,8 @@ export function CharactersScreen() {
         <aside className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm xl:sticky xl:top-5 xl:self-start">
           <h2 className="text-base font-semibold">库概览</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-            角色数据全部保存在浏览器本地。当前页面只展示与导入导出，不会改写角色卡内容。
+            角色数据全部保存在浏览器本地。编辑器只改写明确展示的字段，并保留未知字段、
+            extensions、内嵌世界书与原始 PNG 载体。
           </p>
           <div className="mt-4 space-y-2 text-sm">
             <DetailLine label="角色数量" value={characters.length} />
@@ -558,8 +639,29 @@ export function CharactersScreen() {
         <CharacterDetailDrawer
           detail={selectedCharacterDetail}
           onClose={handleCloseCharacterDetail}
+          onEdit={() =>
+            void handleOpenCharacterEditor(selectedCharacterDetail.id)
+          }
         />
       ) : null}
+
+      {editingCharacterDetail ? (
+        <Suspense fallback={<EditorLoadingPanel label="正在加载角色卡编辑器…" />}>
+          <CharacterEditorDrawer
+            detail={editingCharacterDetail}
+            onClose={() => setEditingCharacterDetail(null)}
+            onSave={handleSaveCharacter}
+          />
+        </Suspense>
+      ) : null}
     </section>
+  );
+}
+
+function EditorLoadingPanel({ label }: { label: string }) {
+  return (
+    <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-3xl border-l border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-2xl">
+      <p className="text-sm text-[var(--text-secondary)]">{label}</p>
+    </aside>
   );
 }

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpenText,
   Download,
   Eye,
   FileJson2,
   Library,
+  Pencil,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -22,12 +23,22 @@ import {
 import { createWorldInfoJsonExport } from "../services/worldInfoExport";
 import { importWorldInfoFilesToDatabase } from "../services/worldInfoFileImport";
 import {
+  updateWorldInfoFromDraft,
+  type WorldInfoEditDraft,
+} from "../services/worldInfoEdit";
+import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import {
   dialectLabels,
   formatDate,
   MiniMetric,
   SummaryTile,
   WorldInfoDetailDrawer,
 } from "./worlds/WorldComponents";
+
+const WorldInfoEditorDrawer = lazy(async () => {
+  const module = await import("./worlds/WorldInfoEditorDrawer");
+  return { default: module.WorldInfoEditorDrawer };
+});
 
 interface WorldInfoNotice {
   kind: "success" | "error";
@@ -42,10 +53,18 @@ export function WorldsScreen() {
   const [busyWorldId, setBusyWorldId] = useState<string | null>(null);
   const [selectedWorldDetail, setSelectedWorldDetail] =
     useState<WorldInfoDetailSummary | null>(null);
+  const [editingWorldDetail, setEditingWorldDetail] =
+    useState<WorldInfoDetailSummary | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<WorldInfoNotice | null>(null);
+  const pendingWorldEditorId = useWorkspaceStore(
+    (state) => state.pendingWorldEditorId,
+  );
+  const consumeWorldEditorRequest = useWorkspaceStore(
+    (state) => state.consumeWorldEditorRequest,
+  );
   const isWorldActionBusy = busyWorldId !== null;
 
   const refreshWorlds = useCallback(
@@ -220,6 +239,68 @@ export function WorldsScreen() {
     setDetailError(null);
   }, []);
 
+  const handleOpenWorldEditor = useCallback(async (worldId: string) => {
+    setIsDetailLoading(true);
+    setDetailError(null);
+
+    try {
+      const detail = await loadWorldInfoDetailSummary(worldId);
+
+      setSelectedWorldDetail(null);
+      setEditingWorldDetail(detail);
+    } catch (detailLoadError: unknown) {
+      setDetailError(
+        detailLoadError instanceof Error
+          ? detailLoadError.message
+          : String(detailLoadError),
+      );
+    } finally {
+      setIsDetailLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingWorldEditorId) return;
+
+    const worldId = pendingWorldEditorId;
+    consumeWorldEditorRequest();
+    void handleOpenWorldEditor(worldId);
+  }, [consumeWorldEditorRequest, handleOpenWorldEditor, pendingWorldEditorId]);
+
+  const handleSaveWorld = useCallback(
+    async (draft: WorldInfoEditDraft) => {
+      if (!editingWorldDetail) return;
+
+      setBusyWorldId(editingWorldDetail.id);
+      setNotice(null);
+
+      try {
+        const result = await updateWorldInfoFromDraft(
+          editingWorldDetail.id,
+          draft,
+        );
+
+        await refreshWorlds();
+        setEditingWorldDetail(null);
+        setNotice({
+          kind: "success",
+          message: result.syncedCharacterId
+            ? `已保存世界书：${result.stored.name}，并同步回关联角色卡。`
+            : `已保存世界书：${result.stored.name}。未知字段与 extensions 均已保留。`,
+        });
+      } catch (saveError: unknown) {
+        setNotice({
+          kind: "error",
+          message: saveError instanceof Error ? saveError.message : String(saveError),
+        });
+        throw saveError;
+      } finally {
+        setBusyWorldId(null);
+      }
+    },
+    [editingWorldDetail, refreshWorlds],
+  );
+
   return (
     <section className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-5 py-6 lg:px-8">
       <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-sm">
@@ -229,12 +310,12 @@ export function WorldsScreen() {
               世界书管理
             </p>
             <h1 className="max-w-2xl text-3xl font-semibold tracking-tight">
-              先把两种世界书方言稳定入库，再逐步做条目编辑与扫描。
+              在保留原始方言的前提下，安全整理世界设定与触发规则。
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
               支持 SillyTavern 原生 <code>{"{entries:{}}"}</code> 世界书，也支持角色卡内嵌
               <code>character_book.entries[]</code> 方言。导入后会保留未知字段，列表先聚焦条目数量、
-              启用状态和关键词样本。
+              启用状态和关键词样本，并可编辑条目与高级扫描字段。
             </p>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -313,7 +394,7 @@ export function WorldsScreen() {
           <h2 className="text-lg font-semibold">还没有世界书</h2>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">
             可以导入 ST 原生世界书 JSON，或导入角色卡内嵌 <code>character_book</code> 的 portable
-            JSON。后续会在这里继续接入条目编辑器与扫描预览。
+            JSON。导入后可直接编辑条目，并按原始方言导出。
           </p>
           <button
             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
@@ -380,6 +461,15 @@ export function WorldsScreen() {
                 </button>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isWorldActionBusy || isDetailLoading}
+                  type="button"
+                  onClick={() => void handleOpenWorldEditor(world.id)}
+                >
+                  <Pencil size={14} />
+                  编辑
+                </button>
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isWorldActionBusy}
                   type="button"
                   onClick={() => void handleExportWorld(world.id)}
@@ -431,8 +521,27 @@ export function WorldsScreen() {
         <WorldInfoDetailDrawer
           detail={selectedWorldDetail}
           onClose={handleCloseWorldDetail}
+          onEdit={() => void handleOpenWorldEditor(selectedWorldDetail.id)}
         />
       ) : null}
+
+      {editingWorldDetail ? (
+        <Suspense fallback={<EditorLoadingPanel />}>
+          <WorldInfoEditorDrawer
+            detail={editingWorldDetail}
+            onClose={() => setEditingWorldDetail(null)}
+            onSave={handleSaveWorld}
+          />
+        </Suspense>
+      ) : null}
     </section>
+  );
+}
+
+function EditorLoadingPanel() {
+  return (
+    <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-6xl border-l border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-2xl">
+      <p className="text-sm text-[var(--text-secondary)]">正在加载世界书编辑器…</p>
+    </aside>
   );
 }

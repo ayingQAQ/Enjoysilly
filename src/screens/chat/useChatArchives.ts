@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import {
   deleteChatArchive,
@@ -8,6 +8,7 @@ import {
   type ChatArchiveSummary,
 } from "../../services/chatArchive";
 import type { ChatMessageLine, ChatMetadataLine } from "../../types/chat";
+import type { ChatSaveCoordinator } from "../../services/chatSaveCoordinator";
 import {
   cloneChatMessages,
   cloneChatMetadata,
@@ -20,6 +21,9 @@ import {
 } from "../chatScreenHelpers";
 
 interface UseChatArchivesInput {
+  saveCoordinator: ChatSaveCoordinator;
+  hasUnsavedChanges: boolean;
+  setIsImportingChat: Dispatch<SetStateAction<boolean>>;
   isImportingChat: boolean;
   isStreaming: boolean;
   loadedArchiveId: string | null;
@@ -42,20 +46,24 @@ export function useChatArchives(input: UseChatArchivesInput) {
   const [isArchiveLoading, setIsArchiveLoading] = useState(true);
   const [loadingArchiveId, setLoadingArchiveId] = useState<string | null>(null);
   const [archiveActionId, setArchiveActionId] = useState<string | null>(null);
+  const busy = useRef(false);
+  const refreshVersion = useRef(0);
+  const latest = useRef(input);
+  latest.current = input;
   const archiveFilterCharacterId = getChatArchiveFilterCharacterId(input.selectedCharacterId);
 
   const refreshChatArchives = useCallback(
     async (options: { silent?: boolean } = {}) => {
+      const version = ++refreshVersion.current;
       if (!options.silent) setIsArchiveLoading(true);
       setArchiveError(null);
       try {
-        setArchives(
-          await loadChatArchiveSummaries({ characterId: archiveFilterCharacterId }),
-        );
+        const summaries = await loadChatArchiveSummaries({ characterId: archiveFilterCharacterId });
+        if (version === refreshVersion.current) setArchives(summaries);
       } catch (error: unknown) {
-        setArchiveError(formatUnknownError(error));
+        if (version === refreshVersion.current) setArchiveError(formatUnknownError(error));
       } finally {
-        if (!options.silent) setIsArchiveLoading(false);
+        if (version === refreshVersion.current) setIsArchiveLoading(false);
       }
     },
     [archiveFilterCharacterId],
@@ -63,18 +71,24 @@ export function useChatArchives(input: UseChatArchivesInput) {
 
   useEffect(() => {
     void refreshChatArchives();
+    return () => { refreshVersion.current++; };
   }, [refreshChatArchives]);
 
   const handleLoadArchive = useCallback(
     async (archiveId: string) => {
-      if (input.isStreaming || loadingArchiveId || archiveActionId) return;
+      if (input.isStreaming || input.isImportingChat || busy.current) return;
+      if (input.hasUnsavedChanges && !window.confirm("当前对话有未保存的修改，确定放弃并加载存档吗？")) return;
+      busy.current = true;
+      input.setIsImportingChat(true);
       setLoadingArchiveId(archiveId);
       input.setError(null);
       input.setSaveMessage(null);
       setArchiveError(null);
       try {
+        await input.saveCoordinator.flush();
         const detail = await loadChatArchiveDetail(archiveId);
         const metadata = detail.stored.payload.metadata;
+        input.saveCoordinator.beginSession(archiveId, detail.stored.updatedAt);
         input.setMessages(cloneChatMessages(detail.stored.payload.messages));
         input.setLoadedChatMetadata(cloneChatMetadata(metadata));
         input.setUserName(normalizeName(metadata.user_name, defaultUserName));
@@ -91,6 +105,8 @@ export function useChatArchives(input: UseChatArchivesInput) {
         setArchiveError(formatUnknownError(error));
         input.setStatusText("读取存档失败");
       } finally {
+        busy.current = false;
+        input.setIsImportingChat(false);
         setLoadingArchiveId(null);
       }
     },
@@ -99,17 +115,21 @@ export function useChatArchives(input: UseChatArchivesInput) {
 
   const handleRenameArchive = useCallback(
     async (archive: ChatArchiveSummary) => {
-      if (input.isStreaming || loadingArchiveId || archiveActionId) return;
+      if (input.isStreaming || input.isImportingChat || busy.current) return;
       const nextName = window.prompt("请输入新的对话存档名称", archive.name);
       if (nextName === null || nextName === archive.name) return;
+      busy.current = true;
+      input.setIsImportingChat(true);
 
       setArchiveActionId(archive.id);
       input.setError(null);
       input.setSaveMessage(null);
       setArchiveError(null);
       try {
+        await input.saveCoordinator.flush();
         const renamed = await renameChatArchive({ chatId: archive.id, name: nextName });
-        if (input.loadedArchiveId === archive.id) {
+        if (latest.current.loadedArchiveId === archive.id) {
+          input.saveCoordinator.beginSession(archive.id, renamed.stored.updatedAt);
           input.setLoadedArchiveName(renamed.summary.name);
         }
         input.setSaveMessage(`已重命名存档：${renamed.summary.name}`);
@@ -119,6 +139,8 @@ export function useChatArchives(input: UseChatArchivesInput) {
         setArchiveError(formatUnknownError(error));
         input.setStatusText("重命名存档失败");
       } finally {
+        busy.current = false;
+        input.setIsImportingChat(false);
         setArchiveActionId(null);
       }
     },
@@ -127,7 +149,7 @@ export function useChatArchives(input: UseChatArchivesInput) {
 
   const handleDeleteArchive = useCallback(
     async (archive: ChatArchiveSummary) => {
-      if (input.isStreaming || loadingArchiveId || archiveActionId) return;
+      if (input.isStreaming || input.isImportingChat || busy.current) return;
       if (
         !window.confirm(
           `确定删除本地对话存档「${archive.name}」吗？此操作不会修改角色卡、预设或 JSONL 导出文件。`,
@@ -136,16 +158,21 @@ export function useChatArchives(input: UseChatArchivesInput) {
         return;
       }
 
+      busy.current = true;
+      input.setIsImportingChat(true);
       setArchiveActionId(archive.id);
       input.setError(null);
       input.setSaveMessage(null);
       setArchiveError(null);
       try {
+        await input.saveCoordinator.flush();
         const deleted = await deleteChatArchive(archive.id);
-        if (input.loadedArchiveId === archive.id) {
+        if (latest.current.loadedArchiveId === archive.id) {
+          input.saveCoordinator.beginSession();
           input.setLoadedArchiveId(null);
           input.setLoadedArchiveName(null);
           input.setLoadedChatMetadata(null);
+          input.setHasUnsavedChanges(false);
         }
         input.setSaveMessage(`已删除存档：${deleted.name}`);
         input.setStatusText("对话存档已删除");
@@ -154,6 +181,8 @@ export function useChatArchives(input: UseChatArchivesInput) {
         setArchiveError(formatUnknownError(error));
         input.setStatusText("删除存档失败");
       } finally {
+        busy.current = false;
+        input.setIsImportingChat(false);
         setArchiveActionId(null);
       }
     },

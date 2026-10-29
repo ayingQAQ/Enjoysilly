@@ -62,6 +62,7 @@ export function useChatAssets({ loadedArchiveId, messageCount }: UseChatAssetsIn
   );
   const [assetError, setAssetError] = useState<string | null>(null);
   const [isAssetLoading, setIsAssetLoading] = useState(true);
+  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [characters, setCharacters] = useState<CharacterAssetSummary[]>([]);
   const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
   const [selectedCharacterId, setSelectedCharacterId] = useState(
@@ -204,6 +205,8 @@ export function useChatAssets({ loadedArchiveId, messageCount }: UseChatAssetsIn
       })
       .catch(() => {
         // Settings are optional; the hook keeps its local defaults.
+      }).finally(() => {
+        if (active) setIsSettingsLoading(false);
       });
     return () => {
       active = false;
@@ -269,6 +272,7 @@ export function useChatAssets({ loadedArchiveId, messageCount }: UseChatAssetsIn
     embeddedWorldInfoEntries,
     greetingOptions,
     isAssetLoading,
+    isSettingsLoading,
     isCharacterReady,
     isPresetReady,
     model,

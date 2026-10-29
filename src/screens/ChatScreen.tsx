@@ -9,6 +9,10 @@ import { PanelRightOpen } from "lucide-react";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
+import { ChatSaveCoordinator } from "../services/chatSaveCoordinator";
+import { useUnsavedChanges } from "../hooks/useUnsavedChanges";
+import { useChatDraftRecovery } from "./chat/useChatDraftRecovery";
+import { ChatMessageEditor, type MessageEditDraft } from "./chat/ChatMessageEditor";
 import type { ChatMessageLine, ChatMetadataLine } from "../types/chat";
 import type { ChatHtmlCardAction } from "./chat/ChatMessageBubble";
 import { ChatConversationPane } from "./chat/ChatConversationPane";
@@ -31,14 +35,17 @@ import {
 } from "./chatScreenHelpers";
 
 export function ChatScreen() {
+  const [saveCoordinator] = useState(() => new ChatSaveCoordinator());
   const [messages, setMessages] = useState<ChatMessageLine[]>([]);
   const [inputText, setInputText] = useState("");
+  const [messageEdit, setMessageEdit] = useState<MessageEditDraft | null>(null);
   const interactiveSubmitTextRef = useRef<string | null>(null);
   const chatFormRef = useRef<HTMLFormElement>(null);
-  const [isImportingChat, setIsImportingChat] = useState(false);
+  const [isImportingFile, setIsImportingChat] = useState(false);
   const [statusText, setStatusText] = useState("等待输入");
   const [error, setError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [loadedArchiveId, setLoadedArchiveId] = useState<string | null>(null);
   const [loadedArchiveName, setLoadedArchiveName] = useState<string | null>(null);
@@ -62,6 +69,7 @@ export function ChatScreen() {
     embeddedWorldInfoEntries,
     greetingOptions,
     isAssetLoading,
+    isSettingsLoading,
     isCharacterReady,
     isPresetReady,
     model,
@@ -84,6 +92,35 @@ export function ChatScreen() {
     loadedArchiveId,
     messageCount: messages.length,
   });
+  const workspaceDraft = useMemo(() => ({
+    version: 1 as const, inputText, messages, archiveId: loadedArchiveId,
+    archiveUpdatedAt: saveCoordinator.getArchiveVersion(),
+    archiveName: loadedArchiveName, metadata: loadedChatMetadata, dirty: hasUnsavedChanges,
+    characterId: selectedCharacterId, presetId: selectedPresetId, userName,
+    characterName, characterDescription, personaDescription,
+    messageEdit,
+  }), [inputText, messages, loadedArchiveId, loadedArchiveName, loadedChatMetadata,
+    hasUnsavedChanges, selectedCharacterId, selectedPresetId, userName, characterName,
+    characterDescription, personaDescription, messageEdit]);
+  const draftRecovery = useChatDraftRecovery(workspaceDraft, draft => {
+    saveCoordinator.beginSession(draft.archiveId ?? undefined, draft.archiveUpdatedAt ?? undefined);
+    setInputText(draft.inputText);
+    setMessageEdit(draft.messageEdit ?? null);
+    setMessages(draft.messages);
+    setLoadedArchiveId(draft.archiveId);
+    setLoadedArchiveName(draft.archiveName);
+    setLoadedChatMetadata(draft.metadata);
+    setHasUnsavedChanges(draft.dirty);
+    setSelectedCharacterId(draft.characterId);
+    if (draft.presetId) setSelectedPresetId(draft.presetId);
+    setUserName(draft.userName);
+    if (draft.characterName !== undefined) setCharacterName(draft.characterName);
+    if (draft.characterDescription !== undefined) setCharacterDescription(draft.characterDescription);
+    if (draft.personaDescription !== undefined) setPersonaDescription(draft.personaDescription);
+    setStatusText(draft.recoveryNotice ?? "本地草稿已恢复（不代表存档已保存）");
+    setRecoveryNotice(draft.recoveryNotice ?? null);
+  }, !isSettingsLoading && !isAssetLoading);
+  const isImportingChat = isImportingFile || !draftRecovery.ready;
   const {
     canContinue,
     handleContinueMessage,
@@ -137,6 +174,9 @@ export function ChatScreen() {
     loadingArchiveId,
     refreshChatArchives,
   } = useChatArchives({
+    saveCoordinator,
+    hasUnsavedChanges,
+    setIsImportingChat,
     isImportingChat,
     isStreaming,
     loadedArchiveId,
@@ -164,6 +204,12 @@ export function ChatScreen() {
     handleSave,
     isSaving,
   } = useChatImportExport({
+    saveCoordinator,
+    onSavedArchive: async (stored, latest) => {
+      const persisted = await draftRecovery.persist({ ...workspaceDraft,
+        archiveId: stored.id, archiveName: stored.name, archiveUpdatedAt: stored.updatedAt, dirty: !latest });
+      if (!persisted) throw new Error("存档已写入，但恢复草稿更新失败，请重试保存");
+    },
     activeCharacter,
     hasUnsavedChanges,
     isImportingChat,
@@ -186,6 +232,17 @@ export function ChatScreen() {
     setStatusText,
     setUserName,
     userName,
+  });
+
+  useUnsavedChanges({
+    label: "当前对话",
+    dirty: hasUnsavedChanges || inputText.length > 0 || messageEdit !== null,
+    busy: isStreaming || isImportingChat || isSaving,
+    save: async () => {
+      if (!await draftRecovery.persist()) return false;
+      return !hasUnsavedChanges || await handleSave();
+    },
+    discard: draftRecovery.discard,
   });
 
   useEffect(() => {
@@ -230,6 +287,7 @@ export function ChatScreen() {
 
   const handleHtmlCardAction = useCallback(
     (action: ChatHtmlCardAction) => {
+      if (isImportingChat) return;
       const text = action.text.trim();
       if (!text) {
         return;
@@ -256,7 +314,7 @@ export function ChatScreen() {
 
       setStatusText("HTML card content copied to draft");
     },
-    [isStreaming],
+    [isStreaming, isImportingChat],
   );
 
   const handleNewChat = useCallback(() => {
@@ -273,6 +331,7 @@ export function ChatScreen() {
       return;
     }
 
+    saveCoordinator.beginSession();
     setMessages([]);
     setError(null);
     setSaveMessage(null);
@@ -282,7 +341,7 @@ export function ChatScreen() {
     setHasUnsavedChanges(false);
     lastAutoGreetingCharacterIdRef.current = null;
     setStatusText("等待输入");
-  }, [isImportingChat, isStreaming, messages.length]);
+  }, [isImportingChat, isStreaming, messages.length, saveCoordinator]);
 
   const handleApplyGreeting = useCallback(
     (greetingIndex: number) => {
@@ -310,6 +369,7 @@ export function ChatScreen() {
         return;
       }
 
+      saveCoordinator.beginSession();
       setMessages([greetingMessage]);
       setError(null);
       setSaveMessage(null);
@@ -319,7 +379,7 @@ export function ChatScreen() {
       setHasUnsavedChanges(true);
       setStatusText("已应用角色首条问候");
     },
-    [activeCharacter, isImportingChat, isStreaming, messages.length, userName],
+    [activeCharacter, isImportingChat, isStreaming, messages.length, userName, saveCoordinator],
   );
 
   const handleEditMessage = useCallback(
@@ -335,19 +395,7 @@ export function ChatScreen() {
       }
 
       const currentText = getChatMessageDisplayText(message);
-      const nextText = window.prompt("编辑当前消息内容", currentText);
-
-      if (nextText === null || nextText === currentText) {
-        return;
-      }
-
-      setMessages((currentMessages) =>
-        updateChatMessageTextAt(currentMessages, messageIndex, nextText),
-      );
-      setSaveMessage(null);
-      setError(null);
-      setHasUnsavedChanges(true);
-      setStatusText("当前页面消息已编辑，保存后会写入本地存档");
+      setMessageEdit({ index: messageIndex, original: currentText, text: currentText });
     },
     [isImportingChat, isStreaming, messages],
   );
@@ -402,6 +450,26 @@ export function ChatScreen() {
 
   return (
     <section className="relative mx-auto flex h-full min-h-0 max-w-[1440px] flex-col px-4 py-3 lg:px-6 lg:py-4">
+      {messageEdit && <ChatMessageEditor draft={messageEdit} onChange={setMessageEdit}
+        onClose={async () => {
+          if (await draftRecovery.persist({ ...workspaceDraft, messageEdit: null })) setMessageEdit(null);
+        }} onSave={async () => {
+          const original = messages[messageEdit.index];
+          if (!original || getChatMessageDisplayText(original) !== messageEdit.original) {
+            setError("消息已发生变化，无法应用旧编辑草稿。请复制内容后关闭并重新编辑。");
+            return false;
+          }
+          const updated = updateChatMessageTextAt(messages, messageEdit.index, messageEdit.text);
+          if (!await draftRecovery.persist({ ...workspaceDraft, messages: updated, dirty: true, messageEdit: null })) return false;
+          setMessages(updated);
+          setMessageEdit(null);
+          setHasUnsavedChanges(true);
+          setSaveMessage(null);
+          setStatusText("消息修改已应用，正在等待存档保存");
+          return true;
+        }} />}
+      {recoveryNotice && <p role="status" className="mb-3 rounded-lg border border-[var(--border-soft)] p-3 text-sm">{recoveryNotice} <button className="underline" onClick={() => setRecoveryNotice(null)}>知道了</button></p>}
+      {draftRecovery.error && <p role="alert" className="mb-3 rounded-lg border border-red-300 p-3 text-sm text-red-600">{draftRecovery.error} <button className="underline" onClick={draftRecovery.retry}>重试草稿读写</button></p>}
       {!isContextPanelOpen ? (
         <button
           aria-expanded={false}
@@ -421,6 +489,7 @@ export function ChatScreen() {
         ].join(" ")}
       >
         <ChatConversationPane
+          disabled={isImportingChat}
           canSend={canSend}
           displayRegexScripts={activeRegexScripts}
           error={error}

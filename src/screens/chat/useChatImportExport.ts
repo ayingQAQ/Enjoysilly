@@ -1,19 +1,20 @@
 import {
   useCallback,
-  useEffect,
+  useMemo,
   useRef,
-  useState,
   type ChangeEvent,
   type Dispatch,
   type SetStateAction,
 } from "react";
 
 import { downloadBytesToFile } from "../../lib/browserDownload";
+import type { StoredChat } from "../../lib/db";
 import type { CharacterCard } from "../../types/character";
 import type { ChatMessageLine, ChatMetadataLine } from "../../types/chat";
 import { createChatJsonlExport } from "../../services/chatExport";
 import { importChatToDatabase } from "../../services/chatImport";
-import { saveChatSnapshotToDatabase } from "../../services/chatPersistence";
+import type { ChatSaveCoordinator } from "../../services/chatSaveCoordinator";
+import { useChatSaving } from "./useChatSaving";
 import {
   createChatImportDatabaseOptions,
   createChatSaveSnapshotInput,
@@ -23,11 +24,12 @@ import {
   formatChatExportError,
   formatChatImportError,
   formatChatSaveError,
-  localCharacterOptionId,
   normalizeName,
 } from "../chatScreenHelpers";
 
 interface UseChatImportExportInput {
+  saveCoordinator: ChatSaveCoordinator;
+  onSavedArchive: (stored: StoredChat, latest: boolean) => Promise<void>;
   activeCharacter: CharacterCard;
   hasUnsavedChanges: boolean;
   isImportingChat: boolean;
@@ -53,60 +55,46 @@ interface UseChatImportExportInput {
 }
 
 export function useChatImportExport(input: UseChatImportExportInput) {
-  const [isSaving, setIsSaving] = useState(false);
+  const snapshot = useMemo(() => ({
+    ...createChatSaveSnapshotInput({
+      activeCharacter: input.activeCharacter,
+      chatMetadata: input.loadedChatMetadata ?? undefined,
+      messages: input.messages,
+      selectedCharacterId: input.selectedCharacterId,
+      userName: input.userName,
+    }),
+    id: input.loadedArchiveId ?? undefined,
+    name: input.loadedArchiveName ?? undefined,
+  }), [input.activeCharacter, input.loadedChatMetadata, input.messages,
+    input.selectedCharacterId, input.userName, input.loadedArchiveId, input.loadedArchiveName]);
+  const { save: handleSave, isSaving } = useChatSaving({
+    coordinator: input.saveCoordinator,
+    snapshot,
+    dirty: input.hasUnsavedChanges,
+    paused: input.isStreaming || input.isImportingChat || (!input.loadedArchiveId && input.messages.length === 0),
+    onSaved: async (stored, latest) => {
+      input.setLoadedArchiveId(stored.id);
+      input.setLoadedArchiveName(stored.name);
+      input.setHasUnsavedChanges(!latest);
+      input.setError(null);
+      input.setSaveMessage(latest ? `已保存：${stored.name}` : "上一版本已保存，最新修改待保存");
+      input.setStatusText(latest ? "对话已保存到本地数据库" : "最新修改待保存");
+      void input.refreshChatArchives({ silent: true });
+      await input.onSavedArchive(stored, latest);
+    },
+    onError: error => {
+      input.setError(`${formatChatSaveError(error)}；内容仍未保存，请点击保存重试。`);
+      input.setHasUnsavedChanges(true);
+      input.setSaveMessage(null);
+      input.setStatusText("保存失败，请重试");
+    },
+  });
   const chatImportInputRef = useRef<HTMLInputElement>(null);
   const canImport = !input.isStreaming && !input.isImportingChat;
   const canSave =
-    !input.isStreaming && !isSaving && !input.isImportingChat && input.messages.length > 0;
+    !input.isStreaming && !isSaving && !input.isImportingChat && (input.messages.length > 0 || !!input.loadedArchiveId);
   const canExport =
     !input.isStreaming && !input.isImportingChat && input.messages.length > 0;
-
-  const autoSaveChat = useCallback(async () => {
-    if (input.messages.length === 0 || input.isStreaming || input.isImportingChat || isSaving) {
-      return;
-    }
-    setIsSaving(true);
-    input.setError(null);
-    try {
-      const stored = await saveChatSnapshotToDatabase({
-        ...createChatSaveSnapshotInput({
-          activeCharacter: input.activeCharacter,
-          chatMetadata: input.loadedChatMetadata ?? undefined,
-          messages: input.messages,
-          selectedCharacterId: input.selectedCharacterId,
-          userName: input.userName,
-        }),
-        id: input.loadedArchiveId ?? undefined,
-        name: input.loadedArchiveName ?? undefined,
-      });
-      input.setLoadedArchiveId(stored.id);
-      input.setLoadedArchiveName(stored.name);
-      input.setHasUnsavedChanges(false);
-      input.setSaveMessage(`已自动保存：${stored.name}`);
-      input.setStatusText("对话已自动保存到本地数据库");
-      await input.refreshChatArchives({ silent: true });
-    } catch (error: unknown) {
-      input.setError(formatChatSaveError(error));
-      input.setHasUnsavedChanges(false);
-      input.setStatusText("自动保存失败");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [input, isSaving]);
-
-  useEffect(() => {
-    if (
-      !input.hasUnsavedChanges ||
-      input.messages.length === 0 ||
-      input.isStreaming ||
-      input.isImportingChat ||
-      isSaving
-    ) {
-      return;
-    }
-    const timer = window.setTimeout(() => void autoSaveChat(), 800);
-    return () => window.clearTimeout(timer);
-  }, [autoSaveChat, input.hasUnsavedChanges, input.isImportingChat, input.isStreaming, input.messages.length, isSaving]);
 
   const handlePickChatImportFile = useCallback(() => {
     if (canImport) chatImportInputRef.current?.click();
@@ -140,6 +128,7 @@ export function useChatImportExport(input: UseChatImportExportInput) {
           storedId: imported.stored.id,
           storedName: imported.stored.name,
         });
+        input.saveCoordinator.beginSession(importedState.loadedArchiveId ?? undefined, imported.stored.updatedAt);
         input.setMessages(importedState.messages);
         input.setUserName(importedState.userName);
         if (importedState.characterName) input.setCharacterName(importedState.characterName);
@@ -161,35 +150,6 @@ export function useChatImportExport(input: UseChatImportExportInput) {
     },
     [canImport, input],
   );
-
-  const handleSave = useCallback(async () => {
-    if (!canSave) return;
-    setIsSaving(true);
-    input.setError(null);
-    input.setSaveMessage(null);
-    try {
-      const stored = await saveChatSnapshotToDatabase(
-        createChatSaveSnapshotInput({
-          activeCharacter: input.activeCharacter,
-          chatMetadata: input.loadedChatMetadata ?? undefined,
-          messages: input.messages,
-          selectedCharacterId: input.selectedCharacterId,
-          userName: input.userName,
-        }),
-      );
-      input.setSaveMessage(`已保存：${stored.name}`);
-      input.setLoadedArchiveId(stored.id);
-      input.setLoadedArchiveName(stored.name);
-      input.setHasUnsavedChanges(false);
-      input.setStatusText("对话已保存到本地数据库");
-      await input.refreshChatArchives({ silent: true });
-    } catch (error: unknown) {
-      input.setError(formatChatSaveError(error));
-      input.setStatusText("保存失败");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [canSave, input]);
 
   const handleExport = useCallback(() => {
     if (!canExport) return;

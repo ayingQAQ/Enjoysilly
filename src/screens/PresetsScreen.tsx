@@ -13,6 +13,7 @@ import {
 
 import { downloadBytesToFile } from "../lib/browserDownload";
 import { deletePreset } from "../lib/db";
+import { PresetEditor } from "./presets/PresetEditor";
 import {
   loadPresetAssetSummaries,
   type PresetAssetSummary,
@@ -39,6 +40,7 @@ interface PresetNotice {
 
 export function PresetsScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editing, setEditing] = useState<PresetDetailSummary | null>(null);
   const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
@@ -400,6 +402,10 @@ export function PresetsScreen() {
                   <Eye size={14} />
                   查看详情
                 </button>
+                <button disabled={isPresetActionBusy || isDetailLoading} className="rounded-lg border px-3 py-2 text-xs" onClick={async () => {
+                  try { setEditing(await loadPresetDetailSummary(preset.id)); }
+                  catch (e) { setDetailError(e instanceof Error ? e.message : String(e)); }
+                }}>编辑</button>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isPresetActionBusy}
@@ -446,6 +452,7 @@ export function PresetsScreen() {
         </div>
       ) : null}
 
+      {editing ? <PresetEditor key={editing.id} original={editing.stored} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setSelectedPresetDetail(null); void refreshPresets(); setNotice({ kind: "success", message: "预设已保存" }); }}/> : null}
       {selectedPresetDetail ? (
         <PresetDetailDrawer
           detail={selectedPresetDetail}
