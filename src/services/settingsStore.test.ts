@@ -19,6 +19,7 @@ import {
   loadUserPersonas,
   saveApiConnectionSettings,
   saveAppSettings,
+  patchAppSettings,
   saveUserPersonas,
   selectDefaultPersona,
   userPersonasKey,
@@ -39,6 +40,17 @@ function createTestDatabaseName(): string {
 }
 
 describe("settingsStore", () => {
+  it("merges concurrent appearance and API writes without losing unknown fields", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    await saveAppSettings({ ...(await loadAppSettings(database)), future: { keep: true } }, { database });
+    await Promise.all([
+      patchAppSettings({ theme: "dark" }, { database }),
+      saveApiConnectionSettings({ baseUrl: "http://localhost/v1", model: "local", apiKey: "" }, { database }),
+      patchAppSettings({ fontScale: "lg" }, { database }),
+    ]);
+    expect(await loadAppSettings(database)).toMatchObject({ theme: "dark", fontScale: "lg", api: { model: "local" }, future: { keep: true } });
+    database.close();
+  });
   it("returns default app settings from an empty database", async () => {
     const database = await openMySillyDatabase(createTestDatabaseName());
 

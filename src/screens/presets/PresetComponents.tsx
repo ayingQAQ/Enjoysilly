@@ -1,3 +1,4 @@
+import { Modal, assetFocusTarget } from "../../components/Modal";
 import type { ReactNode } from "react";
 import { Regex, X } from "lucide-react";
 
@@ -49,7 +50,7 @@ export function PresetDetailDrawer({
   onClose: () => void;
 }) {
   return (
-    <aside
+    <Modal drawer onRequestClose={onClose} returnFocus={() => assetFocusTarget(detail.id, "查看详情")}
       aria-label="预设详情"
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl"
     >
@@ -161,7 +162,7 @@ export function PresetDetailDrawer({
           </div>
         </section>
       </div>
-    </aside>
+    </Modal>
   );
 }
 

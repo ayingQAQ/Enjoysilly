@@ -265,3 +265,22 @@ button {
   background: #ffffff;
   overflow: auto;
 }
+/* Modal surfaces own their scrolling; the document and navigation stay fixed. */
+.app-modal {
+  color: var(--text-primary);
+  max-height: calc(100dvh - 2rem);
+  max-width: calc(100vw - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.app-modal::backdrop { background: rgb(0 0 0 / 40%); }
+.app-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  padding: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  max-width: min(100vw, 48rem);
+  overflow: hidden;
+}

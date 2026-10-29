@@ -17,17 +17,19 @@ export async function runReliabilityChecks(browser, baseURL = "http://127.0.0.1:
     await page.route("**/chat/completions", route => route.fulfill({ status: 200,
       contentType: "text/event-stream", body: 'data: {"choices":[{"delta":{"content":"本地模拟回复🌙"},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n' }));
     await page.goto(baseURL);
+    await expect(page.getByRole("textbox", { name: "输入消息", exact: true })).toBeEnabled();
     await nav("角色卡");
     await page.getByRole("heading", { name: "角色库", exact: true }).waitFor();
     await page.locator('input[type="file"]').setInputFiles(fixture("红楼.png"));
     await page.getByRole("button", { name: "编辑角色卡", exact: true }).click();
     await page.getByLabel("角色名称", { exact: false }).fill("红楼·可靠性回归");
-    await nav("预设");
+    await page.keyboard.press("Escape");
     const leave = page.getByRole("dialog", { name: "离开前保存修改？" });
     await leave.getByRole("button", { name: "取消", exact: true }).click();
     assert.equal(await page.getByLabel("角色名称", { exact: false }).inputValue(), "红楼·可靠性回归");
-    await nav("预设");
+    await page.keyboard.press("Escape");
     await leave.getByRole("button", { name: "保存并离开", exact: true }).click();
+    await nav("预设");
     await page.getByRole("button", { name: "导入预设", exact: true }).waitFor();
     await page.locator('input[type="file"]').setInputFiles(fixture("【DarkSide-小猫之神】v2test.json"));
     await page.getByRole("button", { name: "编辑", exact: true }).click();

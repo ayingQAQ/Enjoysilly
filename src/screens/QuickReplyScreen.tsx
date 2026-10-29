@@ -1,3 +1,4 @@
+import { Modal } from "../components/Modal";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Download,
@@ -197,7 +198,7 @@ export function QuickReplyScreen() {
       )}
 
       {selectedSet ? (
-        <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl">
+        <Modal drawer aria-label="快捷回复详情" onRequestClose={() => setSelectedSet(null)} className="flex w-full flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl">
           <div className="flex items-start justify-between gap-4 border-b border-[var(--border-soft)] p-5">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--accent-strong)]">QR 集详情</p>
@@ -237,7 +238,7 @@ export function QuickReplyScreen() {
               ))}
             </div>
           </div>
-        </aside>
+        </Modal>
       ) : null}
     </section>
   );

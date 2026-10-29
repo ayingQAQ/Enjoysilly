@@ -62,17 +62,20 @@ export function SelectField({
   options,
   onChange,
   emptyLabel,
+  disabled,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
   emptyLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block text-sm">
       <span className="font-medium">{label}</span>
       <select
+        disabled={disabled}
         className="mt-2 w-full rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
         value={value}
         onChange={(event) => onChange(event.target.value)}

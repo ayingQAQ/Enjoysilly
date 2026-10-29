@@ -11,13 +11,13 @@ import {
   testOpenAICompatibleConnection,
   type ConnectionTestResult,
 } from "../services/apiConnection";
-import { applyAppAppearance } from "../services/appAppearance";
+import { useAppearanceStore } from "../store/useAppearanceStore";
 import {
   defaultApiBaseUrl,
   defaultApiModel,
   loadAppSettings,
   loadUserPersonas,
-  saveAppSettings,
+  patchAppSettings,
   saveUserPersonas,
   selectDefaultPersona,
 } from "../services/settingsStore";
@@ -32,6 +32,7 @@ import {
 } from "./settings/settingsForm";
 
 export function SettingsScreen() {
+  const appearance = useAppearanceStore();
   const [form, setForm] = useState<SettingsFormState>(() => createInitialFormState());
   const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
   const [worlds, setWorlds] = useState<WorldInfoAssetSummary[]>([]);
@@ -99,13 +100,6 @@ export function SettingsScreen() {
     void refresh(() => active);
     return () => { active = false; };
   }, [refresh]);
-
-  useEffect(() => {
-    applyAppAppearance({
-      fontScale: form.fontScale,
-      theme: form.theme,
-    });
-  }, [form.fontScale, form.theme]);
 
   const updateField = useCallback(
     <TKey extends keyof SettingsFormState>(key: TKey, value: SettingsFormState[TKey]) => {
@@ -201,7 +195,7 @@ export function SettingsScreen() {
         (result.errors.length > 0 ? ` ${result.errors.length} 项失败。` : ""),
       );
       await refresh();
-      applyAppAppearance(await loadAppSettings());
+      await useAppearanceStore.getState().refresh();
     } catch (err: unknown) {
       setBackupMessage(`恢复失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -215,7 +209,7 @@ export function SettingsScreen() {
     setError(null);
 
     try {
-      const nextSettings: AppSettings = {
+      const nextSettings: Partial<AppSettings> = {
         api: {
           baseUrl: form.baseUrl,
           apiKey: form.apiKey,
@@ -224,8 +218,6 @@ export function SettingsScreen() {
         defaultPresetId: optionalId(form.defaultPresetId),
         defaultWorldId: optionalId(form.defaultWorldId),
         defaultQuickReplySetId: optionalId(form.defaultQuickReplySetId),
-        theme: form.theme,
-        fontScale: form.fontScale,
       };
       const nextPersona: UserPersona = {
         id: "persona_default",
@@ -235,13 +227,12 @@ export function SettingsScreen() {
       };
 
       const [savedSettings, savedPersonas] = await Promise.all([
-        saveAppSettings(nextSettings),
+        patchAppSettings(nextSettings),
         saveUserPersonas([nextPersona]),
       ]);
       const savedPersona = selectDefaultPersona(savedPersonas);
 
       setForm(createFormState(savedSettings, savedPersona));
-      applyAppAppearance(savedSettings);
       setStatusText("设置已保存");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -412,12 +403,13 @@ export function SettingsScreen() {
           <SettingsPanel
             icon={<Palette size={18} />}
             title="界面偏好"
-            subtitle="主题与字号会即时预览，保存后下次启动继续使用。"
+            subtitle="主题与字号立即保存，并与顶部主题按钮同步；无需点击基础设置保存。"
           >
             <SelectField
               label="主题"
-              value={form.theme}
-              onChange={(value) => updateField("theme", value as AppTheme)}
+              value={appearance.theme}
+              disabled={appearance.busy}
+              onChange={(value) => void appearance.change({ theme: value as AppTheme })}
               options={[
                 { value: "system", label: "跟随系统" },
                 { value: "dark", label: "暗色" },
@@ -426,8 +418,9 @@ export function SettingsScreen() {
             />
             <SelectField
               label="字号"
-              value={form.fontScale}
-              onChange={(value) => updateField("fontScale", value as AppFontScale)}
+              value={appearance.fontScale}
+              disabled={appearance.busy}
+              onChange={(value) => void appearance.change({ fontScale: value as AppFontScale })}
               options={[
                 { value: "sm", label: "紧凑" },
                 { value: "md", label: "标准" },

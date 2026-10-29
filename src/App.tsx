@@ -3,8 +3,7 @@ import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { ChatScreen } from "./screens/ChatScreen";
 import { lazy, Suspense, useEffect } from "react";
-import { applyAppAppearance } from "./services/appAppearance";
-import { loadAppSettings } from "./services/settingsStore";
+import { useAppearanceStore } from "./store/useAppearanceStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
 
 const CharactersScreen = lazy(() => import("./screens/CharactersScreen").then(m => ({ default: m.CharactersScreen })));
@@ -19,9 +18,7 @@ export function App() {
   const activeSection = useWorkspaceStore((state) => state.activeSection);
 
   useEffect(() => {
-    loadAppSettings()
-      .then(applyAppAppearance)
-      .catch(() => {});
+    void useAppearanceStore.getState().refresh();
   }, []);
 
   return (

@@ -1,3 +1,4 @@
+import { Modal } from "../../components/Modal";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
@@ -11,7 +12,7 @@ export function RegexDetailDrawer({
   onClose: () => void;
 }) {
   return (
-    <aside
+    <Modal drawer onRequestClose={onClose}
       aria-label="正则脚本详情"
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl"
     >
@@ -86,7 +87,7 @@ export function RegexDetailDrawer({
           </p>
         </section>
       </div>
-    </aside>
+    </Modal>
   );
 }
 

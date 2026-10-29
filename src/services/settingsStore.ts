@@ -1,5 +1,6 @@
 import {
   getSetting,
+  getMySillyDatabase,
   saveSetting,
   type MySillyDatabaseConnection,
 } from "../lib/db";
@@ -72,6 +73,20 @@ export async function loadApiConnectionSettings(
   return (await loadAppSettings(database)).api;
 }
 
+/** Read/merge/write share one transaction, so independent preferences cannot clobber each other. */
+export async function patchAppSettings(
+  patch: Partial<AppSettings>,
+  options: { database?: MySillyDatabaseConnection; now?: Date } = {},
+): Promise<AppSettings> {
+  const db = options.database ?? await getMySillyDatabase();
+  const tx = db.transaction("settings", "readwrite");
+  const current = normalizeAppSettings((await tx.store.get(appSettingsKey))?.value);
+  const next = normalizeAppSettings({ ...current, ...patch });
+  await tx.store.put({ key: appSettingsKey, value: next, updatedAt: (options.now ?? new Date()).toISOString() });
+  await tx.done;
+  return next;
+}
+
 export async function saveApiConnectionSettings(
   api: ApiConnectionSettings,
   options: {
@@ -79,15 +94,7 @@ export async function saveApiConnectionSettings(
     now?: Date;
   } = {},
 ): Promise<AppSettings> {
-  const current = await loadAppSettings(options.database);
-
-  return saveAppSettings(
-    {
-      ...current,
-      api,
-    },
-    options,
-  );
+  return patchAppSettings({ api }, options);
 }
 
 export async function loadUserPersonas(

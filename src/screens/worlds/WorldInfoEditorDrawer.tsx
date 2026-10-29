@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { Modal, assetFocusTarget } from "../../components/Modal";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -37,6 +38,7 @@ export function WorldInfoEditorDrawer({
     initialDraft.entries[0]?.draftId ?? "",
   );
   const [isSaving, setIsSaving] = useState(false);
+  const saving = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const errors = validateWorldInfoEditDraft(draft);
   const selectedIndex = draft.entries.findIndex(
@@ -113,7 +115,8 @@ export function WorldInfoEditorDrawer({
   };
 
   const handleSave = async () => {
-    if (errorCount > 0 || isSaving) return false;
+    if (errorCount > 0 || saving.current) return false;
+    saving.current = true;
 
     setIsSaving(true);
     setSaveError(null);
@@ -125,6 +128,7 @@ export function WorldInfoEditorDrawer({
       setSaveError(error instanceof Error ? error.message : String(error));
       return false;
     } finally {
+      saving.current = false;
       setIsSaving(false);
     }
   };
@@ -132,7 +136,7 @@ export function WorldInfoEditorDrawer({
   const confirmLeave = useUnsavedChanges({ label: "世界书编辑器", dirty: isDirty, busy: isSaving, save: handleSave });
 
   return (
-    <aside
+    <Modal drawer busy={isSaving} onRequestClose={requestClose} returnFocus={() => assetFocusTarget(detail.id, "编辑")} style={{ maxWidth: "min(100vw,72rem)" }}
       aria-label="编辑世界书"
       className="fixed inset-y-0 right-0 z-50 flex w-full max-w-6xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl"
     >
@@ -180,7 +184,7 @@ export function WorldInfoEditorDrawer({
         </label>
       </div>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[270px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(80px,30%)_minmax(0,1fr)] lg:grid-cols-[270px_minmax(0,1fr)] lg:grid-rows-1">
         <nav className="min-h-0 overflow-y-auto border-b border-[var(--border-soft)] bg-[var(--surface-muted)] p-3 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between gap-2 px-1 pb-3">
             <div>
@@ -537,7 +541,7 @@ export function WorldInfoEditorDrawer({
         </div>
       </footer>
       </fieldset>
-    </aside>
+    </Modal>
   );
 }
 

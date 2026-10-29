@@ -1,3 +1,5 @@
+import { useAssetBrowser } from "../hooks/useAssetBrowser";
+import { AssetBrowserControls, AssetTagButton } from "../components/AssetBrowserControls";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpenText,
@@ -48,6 +50,7 @@ interface WorldInfoNotice {
 export function WorldsScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [worlds, setWorlds] = useState<WorldInfoAssetSummary[]>([]);
+  const browser = useAssetBrowser("worlds", worlds);
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
   const [busyWorldId, setBusyWorldId] = useState<string | null>(null);
@@ -380,6 +383,7 @@ export function WorldsScreen() {
         />
       </div>
 
+      <AssetBrowserControls label="世界书" query={browser.query} onChange={browser.setQuery} tags={browser.allTags} count={browser.visible.length} total={worlds.length} error={browser.error} onRetry={browser.retry}/>
       {isLoading ? (
         <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 text-sm text-[var(--text-secondary)] shadow-sm">
           正在读取本地世界书...
@@ -409,8 +413,9 @@ export function WorldsScreen() {
 
       {!isLoading && worlds.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {worlds.map((world) => (
+          {browser.visible.map((world) => (
             <article
+              data-asset-id={world.id}
               key={world.id}
               className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm"
             >
@@ -495,6 +500,7 @@ export function WorldsScreen() {
                 </span>
                 <span>{formatDate(world.updatedAt)}</span>
               </div>
+              <AssetTagButton name={world.name} tags={browser.tags[world.id] ?? []} onSave={tags => browser.saveTags(world.id, tags)}/>
             </article>
           ))}
         </div>

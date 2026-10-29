@@ -1,3 +1,4 @@
+import { Modal, assetFocusTarget } from "../../components/Modal";
 import type { ReactNode } from "react";
 import { BookOpen, Bot, Pencil, X } from "lucide-react";
 
@@ -75,7 +76,7 @@ export function CharacterDetailDrawer({
   onEdit: () => void;
 }) {
   return (
-    <aside
+    <Modal drawer onRequestClose={onClose} returnFocus={() => assetFocusTarget(detail.id, "查看详情")}
       aria-label="角色卡详情"
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl"
     >
@@ -179,7 +180,7 @@ export function CharacterDetailDrawer({
           )}
         </section>
       </div>
-    </aside>
+    </Modal>
   );
 }
 
@@ -298,12 +299,14 @@ export function getFilteredCharacters(
   characters: CharacterAssetSummary[],
   options: {
     query: string;
+    tag?: string;
     showWorldLinkedOnly: boolean;
     sortMode: CharacterSortMode;
   },
 ): CharacterAssetSummary[] {
   const query = options.query.trim().toLocaleLowerCase("zh-CN");
   const filtered = characters.filter((character) => {
+    if (options.tag && !character.tags.includes(options.tag)) return false;
     if (options.showWorldLinkedOnly && character.worldEntryCount === 0) {
       return false;
     }

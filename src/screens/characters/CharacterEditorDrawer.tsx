@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpenText, ImageUp, Plus, Save, Trash2, X } from "lucide-react";
 
 import type { CharacterDetailSummary } from "../../services/characterDetails";
@@ -11,6 +11,7 @@ import {
 } from "../../services/characterEdit";
 import { useWorkspaceStore } from "../../store/useWorkspaceStore";
 import { useUnsavedChanges } from "../../hooks/useUnsavedChanges";
+import { Modal, assetFocusTarget } from "../../components/Modal";
 
 export function CharacterEditorDrawer({
   detail,
@@ -30,6 +31,7 @@ export function CharacterEditorDrawer({
   );
   const [draft, setDraft] = useState(initialDraft);
   const [isSaving, setIsSaving] = useState(false);
+  const saving = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [avatarReplacement, setAvatarReplacement] =
     useState<CharacterAvatarReplacement>();
@@ -67,10 +69,11 @@ export function CharacterEditorDrawer({
   };
 
   const handleSave = async () => {
-    if (errors.name || isSaving) {
+    if (errors.name || saving.current) {
       return false;
     }
 
+    saving.current = true;
     setIsSaving(true);
     setSaveError(null);
 
@@ -81,6 +84,7 @@ export function CharacterEditorDrawer({
       setSaveError(error instanceof Error ? error.message : String(error));
       return false;
     } finally {
+      saving.current = false;
       setIsSaving(false);
     }
   };
@@ -92,7 +96,7 @@ export function CharacterEditorDrawer({
   };
 
   return (
-    <aside
+    <Modal drawer busy={isSaving} onRequestClose={requestClose} returnFocus={() => assetFocusTarget(detail.id, "编辑角色卡")}
       aria-label="编辑角色卡"
       className="fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl"
     >
@@ -367,7 +371,7 @@ export function CharacterEditorDrawer({
         </div>
       </footer>
       </fieldset>
-    </aside>
+    </Modal>
   );
 }
 

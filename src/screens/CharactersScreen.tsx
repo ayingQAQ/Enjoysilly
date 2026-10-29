@@ -69,11 +69,13 @@ export function CharactersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<CharacterNotice | null>(null);
   const [query, setQuery] = useState("");
+  const [tag, setTag] = useState("");
   const [sortMode, setSortMode] = useState<CharacterSortMode>("updated");
   const [showWorldLinkedOnly, setShowWorldLinkedOnly] = useState(false);
   const isCharacterActionBusy = busyCharacterId !== null;
   const filteredCharacters = getFilteredCharacters(characters, {
     query,
+    tag,
     showWorldLinkedOnly,
     sortMode,
   });
@@ -422,6 +424,9 @@ export function CharactersScreen() {
           </label>
 
           <div className="flex flex-wrap gap-2">
+            <select aria-label="角色标签筛选" value={tag} onChange={e => setTag(e.target.value)} className="min-w-0 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] p-2 text-sm">
+              <option value="">全部标签</option>{[...new Set([...characters.flatMap(c => c.tags), ...(tag ? [tag] : [])])].sort((a,b) => a.localeCompare(b, "zh-CN")).map(t => <option key={t}>{t}</option>)}
+            </select>
             <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-secondary)]">
               <SlidersHorizontal size={16} />
               <span className="sr-only">排序</span>
@@ -513,6 +518,7 @@ export function CharactersScreen() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {filteredCharacters.map((character) => (
                 <article
+                  data-asset-id={character.id}
                   key={character.id}
                   className="group rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md"
                 >

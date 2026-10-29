@@ -1,3 +1,4 @@
+import { Modal } from "../components/Modal";
 import { useCallback, useEffect, useState } from "react";
 import {
   Eye,
@@ -173,7 +174,7 @@ export function GroupsScreen() {
       )}
 
       {selectedGroupDetail ? (
-        <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-2xl flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl">
+        <Modal drawer aria-label="群组详情" onRequestClose={() => setSelectedGroupId(null)} className="flex w-full flex-col border-l border-[var(--border-soft)] bg-[var(--surface)] shadow-2xl">
           <div className="flex items-start justify-between gap-4 border-b border-[var(--border-soft)] p-5">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--accent-strong)]">群组详情</p>
@@ -207,7 +208,7 @@ export function GroupsScreen() {
               ))}
             </div>
           </div>
-        </aside>
+        </Modal>
       ) : null}
 
       {showCreate ? (
@@ -277,8 +278,8 @@ function CreateGroupDialog({
   }, [characterById, name, selectedIds, strategy, onCreated]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="mx-4 max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-2xl">
+    <Modal aria-label="创建新群组" busy={isSaving} onRequestClose={onClose} className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-2xl">
+      <fieldset disabled={isSaving}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--accent-strong)]">新建群组</p>
@@ -366,8 +367,8 @@ function CreateGroupDialog({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </fieldset>
+    </Modal>
   );
 }
 

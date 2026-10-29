@@ -1,7 +1,5 @@
 import { ChevronRight, Moon } from "lucide-react";
-import { useState } from "react";
-import { loadAppSettings, saveAppSettings } from "../services/settingsStore";
-import { applyAppAppearance } from "../services/appAppearance";
+import { useAppearanceStore } from "../store/useAppearanceStore";
 
 import { workspaceSections } from "../data/workspace";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
@@ -19,8 +17,7 @@ const sectionGroups: Array<{ label: string; ids: WorkspaceSectionId[] }> = [
 ];
 
 export function AppShell({ children }: AppShellProps) {
-  const [themeBusy, setThemeBusy] = useState(false);
-  const [themeError, setThemeError] = useState("");
+  const appearance = useAppearanceStore();
   const activeSection = useWorkspaceStore((state) => state.activeSection);
   const setActiveSection = useWorkspaceStore((state) => state.setActiveSection);
 
@@ -46,23 +43,17 @@ export function AppShell({ children }: AppShellProps) {
             type="button"
             aria-label="切换明暗主题"
             title="切换明暗主题"
-            disabled={themeBusy}
+            disabled={appearance.busy}
             onClick={async () => {
-              setThemeBusy(true); setThemeError("");
-              try {
-                const settings = await loadAppSettings();
-                const dark = settings.theme === "dark" || (settings.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-                const next = await saveAppSettings({ ...settings, theme: dark ? "light" : "dark" });
-                applyAppAppearance(next);
-              } catch { setThemeError("主题保存失败，请重试。"); }
-              finally { setThemeBusy(false); }
+              const dark = appearance.theme === "dark" || (appearance.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+              await appearance.change({ theme: dark ? "light" : "dark" });
             }}
           >
             <Moon size={17} />
           </button>
         </div>
       </header>
-      {themeError ? <p role="alert" className="shrink-0 px-4 text-red-600">{themeError}</p> : null}
+      {appearance.error ? <p role="alert" className="shrink-0 px-4 text-red-600">{appearance.error}<button onClick={() => void appearance.refresh()}>重新读取</button></p> : null}
 
       <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2 lg:hidden">
         {workspaceSections.map((section) => {

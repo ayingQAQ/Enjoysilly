@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { Modal } from "../../components/Modal";
 import { unsavedChanges } from "../../services/unsavedChanges";
 
 export interface MessageEditDraft { index: number; original: string; text: string }
@@ -9,17 +10,12 @@ export function ChatMessageEditor({ draft, onChange, onSave, onClose }: {
   onSave: () => Promise<boolean>;
   onClose: () => void | Promise<void>;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const saving = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const element = dialog.current!;
-    element.showModal();
-    return () => { element.close(); previous?.focus(); };
-  }, []);
   const save = async () => {
-    if (busy) return false;
+    if (saving.current) return false;
+    saving.current = true;
     setBusy(true);
     setError("");
     try {
@@ -28,7 +24,7 @@ export function ChatMessageEditor({ draft, onChange, onSave, onClose }: {
       return saved;
     }
     catch (e) { setError(`保存未完成：${e instanceof Error ? e.message : String(e)}`); return false; }
-    finally { setBusy(false); }
+    finally { saving.current = false; setBusy(false); }
   };
   const close = async () => {
     if (busy) return;
@@ -37,8 +33,7 @@ export function ChatMessageEditor({ draft, onChange, onSave, onClose }: {
     });
     if (accepted) await onClose();
   };
-  return <dialog ref={dialog} aria-labelledby="message-edit-title"
-    onCancel={event => { event.preventDefault(); void close(); }}
+  return <Modal busy={busy} onRequestClose={close} aria-labelledby="message-edit-title"
     className="m-auto w-[calc(100%-2rem)] max-w-3xl rounded-2xl border border-[var(--border-soft)] bg-[var(--surface)] p-5 text-[var(--text-primary)] shadow-2xl backdrop:bg-black/40">
     <h2 id="message-edit-title" className="text-lg font-semibold">编辑消息</h2>
     <p className="my-2 text-xs text-[var(--text-secondary)]">Ctrl / ⌘ + Enter 保存，Escape 关闭。未应用的编辑会保留为本地草稿。</p>
@@ -51,5 +46,5 @@ export function ChatMessageEditor({ draft, onChange, onSave, onClose }: {
       <button disabled={busy} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-white" onClick={() => void save()}>{busy ? "保存中…" : "保存消息"}</button>
     </div>
     {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
-  </dialog>;
+  </Modal>;
 }

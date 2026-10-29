@@ -1,3 +1,5 @@
+import { useAssetBrowser } from "../hooks/useAssetBrowser";
+import { AssetBrowserControls, AssetTagButton } from "../components/AssetBrowserControls";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Download,
@@ -42,6 +44,7 @@ export function PresetsScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<PresetDetailSummary | null>(null);
   const [presets, setPresets] = useState<PresetAssetSummary[]>([]);
+  const browser = useAssetBrowser("presets", presets);
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
   const [busyPresetId, setBusyPresetId] = useState<string | null>(null);
@@ -305,6 +308,7 @@ export function PresetsScreen() {
         <SummaryTile label="第三方扩展" value={thirdPartyCount} />
       </div>
 
+      <AssetBrowserControls label="预设" query={browser.query} onChange={browser.setQuery} tags={browser.allTags} count={browser.visible.length} total={presets.length} error={browser.error} onRetry={browser.retry}/>
       {isLoading ? (
         <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 text-sm text-[var(--text-secondary)] shadow-sm">
           正在读取本地预设...
@@ -334,8 +338,9 @@ export function PresetsScreen() {
 
       {!isLoading && presets.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {presets.map((preset) => (
+          {browser.visible.map((preset) => (
             <article
+              data-asset-id={preset.id}
               key={preset.id}
               className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm"
             >
@@ -430,6 +435,7 @@ export function PresetsScreen() {
                 <span>{preset.orderSlotCount} 个 prompt_order 槽</span>
                 <span>{formatDate(preset.updatedAt)}</span>
               </div>
+              <AssetTagButton name={preset.name} tags={browser.tags[preset.id] ?? []} onSave={tags => browser.saveTags(preset.id, tags)}/>
             </article>
           ))}
         </div>
@@ -452,7 +458,7 @@ export function PresetsScreen() {
         </div>
       ) : null}
 
-      {editing ? <PresetEditor key={editing.id} original={editing.stored} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setSelectedPresetDetail(null); void refreshPresets(); setNotice({ kind: "success", message: "预设已保存" }); }}/> : null}
+      {editing ? <PresetEditor key={editing.id} original={editing.stored} onClose={() => setEditing(null)} onSaved={async () => { await refreshPresets(); setEditing(null); setSelectedPresetDetail(null); setNotice({ kind: "success", message: "预设已保存" }); }}/> : null}
       {selectedPresetDetail ? (
         <PresetDetailDrawer
           detail={selectedPresetDetail}
