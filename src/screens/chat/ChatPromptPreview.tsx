@@ -28,6 +28,7 @@ export function ChatPromptPreview({ data, error, onClose, onSend }: {
         {!prepared.worldInfoScanResult?.diagnostics?.length ? <p className="text-sm">当前没有参与扫描的世界书条目。</p> : <ul className="space-y-2">{prepared.worldInfoScanResult.diagnostics.map(d => <li key={d.sourceIndex} className="rounded-lg border border-[var(--border-soft)] p-3 text-xs leading-6">
           <strong>#{d.sourceIndex + 1} {d.comment || `条目 ${d.id ?? d.sourceIndex + 1}`} · {worldInfoOutcomeLabels[d.outcome]}</strong>
           <p>插入组：{d.bucket === "before" ? "角色前" : d.bucket === "after" ? "角色后" : "历史深度"}</p>
+          {d.attempts.some(a => a.reasons.includes("sticky")) && <p>sticky 保持激活：本轮无需再次命中关键词。</p>}
           {d.attempts.map((a, i) => <p key={i}>第 {a.round} 轮（0 为初始扫描）：{worldInfoOutcomeLabels[a.outcome]}；{a.reasons.includes("constant") ? "常驻；" : ""}关键词 {a.matchedKeys.join("、") || "无"}；次要关键词 {a.matchedSecondary.join("、") || "无"}{a.probabilityRoll !== undefined ? `；概率抽样 ${a.probabilityRoll.toFixed(2)}` : ""}</p>)}
           {d.notes.length > 0 && <details><summary className="cursor-pointer">执行限制（{d.notes.length}）</summary>{d.notes.map(note => <p key={note}>{note}</p>)}</details>}
         </li>)}</ul>}

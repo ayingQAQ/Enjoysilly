@@ -26,7 +26,7 @@ export function analyzeAssetCompatibility(kind: CompatibilityKind, payload: unkn
     const notes = new Set<string>();
     for (const entry of entries) {
       if (!entry || typeof entry !== "object") continue;
-      for (const note of worldInfoExecutionNotes(entry as WorldInfoScanInputEntry)) notes.add(note);
+      for (const note of worldInfoExecutionNotes(entry as WorldInfoScanInputEntry, { enabledFeatures: { timedEffects: true } })) notes.add(note);
     }
     if (notes.size) add("world-limits", "partial", "世界书当前执行限制", [...notes].join("；"), ["entries / character_book.entries"]);
   }
@@ -36,7 +36,7 @@ export function analyzeAssetCompatibility(kind: CompatibilityKind, payload: unkn
     const unsupported = prompts.filter(p => p.marker === true && !markers.has(String(p.identifier)));
     if (unsupported.length) add("unknown-marker", "retained", "未实现的动态 marker", "这些 marker 目前不会生成内容：" + unsupported.map(p => String(p.identifier)).join("、"), unsupported.map(p => `prompts.${String(p.identifier)}`));
     if (prompts.some(p => ["injection_position", "injection_depth", "injection_order", "injection_trigger", "forbid_overrides"].some(k => p[k] !== undefined))) add("prompt-injection", "retained", "高级注入规则", "injection_* 与 forbid_overrides 保留，当前不参与深度、触发条件或覆盖控制；提示词仅按排序槽组装。", ["prompts.*.injection_*", "prompts.*.forbid_overrides"]);
-    add("sampling", "partial", "采样与上下文", "请求映射 temperature、top_p、frequency_penalty、presence_penalty、openai_max_tokens；聊天使用流式请求。其他提供方参数和 openai_max_context 不代表已执行上下文截断。", ["$"]);
+    add("sampling", "partial", "采样与上下文", "请求映射 temperature、top_p、frequency_penalty、presence_penalty、openai_max_tokens；openai_max_context 用于启发式上下文预算，最旧历史可省略，必要内容超限会阻止发送。其他提供方参数仅保留。", ["$"]);
   }
   const scriptPaths: string[] = [], htmlPaths: string[] = [], extensionPaths: string[] = [], regexPaths: string[] = [];
   const walk = (value: unknown, path: string) => {

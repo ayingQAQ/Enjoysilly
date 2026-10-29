@@ -2,6 +2,7 @@ import type { ChatMessageLine } from "../types/chat";
 import type { CharacterCard } from "../types/character";
 import type { ChatCompletionPreset } from "../types/preset";
 import { contextBudgetLimits, estimateRequestTokens, type ContextBudgetReport } from "./contextBudget";
+import { replayTimedWorldInfo } from "./worldInfoTimed";
 import {
   createChatCompletionRequestBody,
   type OpenAICompatibleChatCompletionRequestBody,
@@ -15,7 +16,6 @@ import {
   type PromptMessageSource,
 } from "./promptBuilder";
 import {
-  scanWorldInfo,
   type ScannedWorldInfoEntry,
   type WorldInfoScanInputEntry,
   type WorldInfoScanOptions,
@@ -128,9 +128,9 @@ function createWorldInfoScanResult(
     return undefined;
   }
 
-  return scanWorldInfo(
+  return replayTimedWorldInfo(
     input.worldInfoEntries,
-    chatMessages.map(getChatMessageDisplayText),
+    chatMessages,
     { ...input.worldInfoScanOptions, diagnostics: input.diagnostics || input.worldInfoScanOptions?.diagnostics },
   );
 }

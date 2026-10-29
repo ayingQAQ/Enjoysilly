@@ -1,4 +1,5 @@
 import type { ChatMessageLine } from "../types/chat";
+import { timedDurations } from "./worldInfoTimed";
 import { worldInfoExecutionNotes, type WorldInfoAttempt, type WorldInfoDiagnostic } from "./worldInfoDiagnostics";
 import type {
   NativeWorldInfoEntry,
@@ -51,11 +52,12 @@ export interface ScannedWorldInfoEntry {
   order: number;
   depth?: number;
   matchedKeys: string[];
-  reasons: Array<"constant" | "keyword">;
+  reasons: Array<"constant" | "keyword" | "sticky">;
   entry: WorldInfoScanInputEntry;
 }
 
 export interface WorldInfoScanResult {
+  runtimeState?: WorldInfoScanRuntimeState;
   diagnostics?: WorldInfoDiagnostic[];
   before: ScannedWorldInfoEntry[];
   after: ScannedWorldInfoEntry[];
@@ -108,11 +110,25 @@ export function scanWorldInfo(
       for (const hit of hits) diagnostics[hit.sourceIndex].outcome = selected.has(hit.sourceIndex) ? "selected" : "budget";
     }
     const result = buildScanResult(kept);
+    if (options.enabledFeatures?.timedEffects) {
+      const turn = options.runtimeState?.turnIndex ?? 0;
+      const timedByEntryId = { ...options.runtimeState?.timedByEntryId };
+      for (const hit of kept) {
+        const durations = timedDurations(hit.entry);
+        if (!durations.sticky && !durations.cooldown) continue;
+        const key = String(hit.sourceIndex);
+        const previous = timedByEntryId[key];
+        if (previous?.lastTriggeredTurn === turn || (previous?.stickyUntil ?? -1) > turn) continue;
+        const stickyUntil = turn + Math.max(1, durations.sticky);
+        timedByEntryId[key] = { lastTriggeredTurn: turn, stickyUntil, cooldownUntil: stickyUntil + durations.cooldown };
+      }
+      result.runtimeState = { turnIndex: turn, timedByEntryId };
+    }
     return diagnostics ? { ...result, diagnostics } : result;
   };
 
   const firstRound = runSingleScan(
-    normalizedEntries.filter((e) => !e.delayUntilRecursion),
+    normalizedEntries.filter((e) => !e.delayUntilRecursion || isSticky(e, options)),
     chatMessages,
     options,
     diagnostics,
@@ -243,6 +259,15 @@ function scanEntry(
     if (diagnostic) { diagnostic.outcome = outcome; diagnostic.attempts.push(attempt); }
   };
 
+  const sticky = isSticky(entry, options);
+  if (options.enabledFeatures?.timedEffects) {
+    const turn = options.runtimeState?.turnIndex ?? 0;
+    const state = options.runtimeState?.timedByEntryId?.[String(entry.sourceIndex)];
+    if (turn < timedDurations(entry.entry).delay) { decide("delay"); return undefined; }
+    if (!sticky && turn < (state?.cooldownUntil ?? -1)) { decide("cooldown"); return undefined; }
+    if (sticky) reasons.push("sticky");
+  }
+
   if (entry.constant) {
     reasons.push("constant");
   }
@@ -250,7 +275,7 @@ function scanEntry(
   if (matchedKeys.length > 0) {
     const selectiveEnabled = options.enabledFeatures?.selective === true;
 
-    if (selectiveEnabled && entry.selective && entry.keysecondary.length > 0) {
+    if (!sticky && selectiveEnabled && entry.selective && entry.keysecondary.length > 0) {
       const matchedSecondary = entry.keysecondary.filter((key) =>
         matchesKey(key, scanText, entry, options),
       );
@@ -270,7 +295,7 @@ function scanEntry(
     return undefined;
   }
 
-  if (options.enabledFeatures?.probability === true && !passesProbability(entry, options, attempt)) {
+  if (!sticky && options.enabledFeatures?.probability === true && !passesProbability(entry, options, attempt)) {
     decide("probability");
     return undefined;
   }
@@ -288,6 +313,11 @@ function scanEntry(
     entry: entry.entry,
     bucket: entry.bucket,
   };
+}
+
+function isSticky(entry: NormalizedWorldInfoEntry, options: WorldInfoScanOptions): boolean {
+  return options.enabledFeatures?.timedEffects === true &&
+    (options.runtimeState?.timedByEntryId?.[String(entry.sourceIndex)]?.stickyUntil ?? -1) > (options.runtimeState?.turnIndex ?? 0);
 }
 
 function evaluateSelectiveLogic(
