@@ -51,6 +51,7 @@ export async function saveChatSnapshotToDatabase(
     name: input.name ?? previous?.name,
   });
   if (previous) {
+    if (previous.branch) stored.branch = structuredClone(previous.branch);
     stored.createdAt = previous.createdAt;
     const previousTime = Date.parse(previous.updatedAt);
     if (Number.isFinite(previousTime) && Date.parse(stored.updatedAt) <= previousTime) {

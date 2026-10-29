@@ -1,5 +1,6 @@
-import { Eye, MessageSquare, PanelRightOpen, PanelRightClose } from "lucide-react";
-import type { FormEvent, RefObject } from "react";
+import { Eye, Search, MessageSquare, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { useRef, useState, type FormEvent, type RefObject } from "react";
+import { ChatSearch } from "./ChatSearch";
 
 import type { RegexScriptLike } from "../../lib/regexEngine";
 import type { StoredQuickReplySet } from "../../lib/db";
@@ -9,6 +10,7 @@ import { ChatMessageList } from "./ChatMessageList";
 import type { ChatHtmlCardAction } from "./ChatMessageBubble";
 
 interface ChatConversationPaneProps {
+  onBranch: (index: number) => void;
   onPreview: () => void;
   characterName: string;
   contextOpen: boolean;
@@ -36,6 +38,8 @@ interface ChatConversationPaneProps {
 
 export function ChatConversationPane(props: ChatConversationPaneProps) {
   const disabled = props.isStreaming || Boolean(props.disabled);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const list = useRef<HTMLDivElement>(null);
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border-soft)] bg-[var(--surface)]">
@@ -49,8 +53,9 @@ export function ChatConversationPane(props: ChatConversationPaneProps) {
             <p className="mt-0.5 text-xs text-[var(--text-secondary)]">对话 · {props.messages.length} 条消息</p>
           </div>
         </div>
+        <button type="button" aria-label="搜索对话" title="搜索对话" aria-expanded={searchOpen} onClick={() => setSearchOpen(value => !value)} className="ml-auto grid size-11 shrink-0 place-items-center rounded-lg border border-[var(--border-soft)]"><Search size={16}/></button>
         <button type="button" aria-label="预览提示词" title="预览提示词" disabled={!props.canSend || disabled} onClick={props.onPreview}
-          className="ml-auto grid size-11 shrink-0 place-items-center rounded-lg border border-[var(--border-soft)] disabled:opacity-40"><Eye size={16}/></button>
+          className="grid size-11 shrink-0 place-items-center rounded-lg border border-[var(--border-soft)] disabled:opacity-40"><Eye size={16}/></button>
         <button type="button" aria-label={props.contextOpen ? "收起上下文" : "打开上下文"} aria-expanded={props.contextOpen}
           className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-[var(--border-soft)] px-3 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
           onClick={props.onToggleContext}>
@@ -58,7 +63,11 @@ export function ChatConversationPane(props: ChatConversationPaneProps) {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+      {searchOpen && <ChatSearch messages={props.messages} disabled={disabled} onBranch={props.onBranch} onLocate={index => {
+        const target = list.current?.querySelector<HTMLElement>(`[data-chat-message-index="${index}"]`);
+        target?.scrollIntoView({ block: "center" }); target?.focus({ preventScroll: true });
+      }} />}
+      <div ref={list} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
         <div className="mx-auto max-w-3xl">
           <ChatMessageList
             disabled={disabled}

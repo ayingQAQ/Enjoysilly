@@ -111,8 +111,8 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
           personaDescription: input.personaDescription, worldInfoEntries: input.activeWorldInfoEntries,
           regexScripts: input.activeRegexScripts,
         });
-        if (controller.signal.aborted) return;
-        if (!inspected && preparedTurn.prepared.budget?.omittedMessages && !window.confirm(`上下文预算将省略最旧 ${preparedTurn.prepared.budget.omittedMessages} 条历史（原存档不变）。是否发送？可取消后查看提示词预览。`)) return;
+        if (controller.signal.aborted) { input.setStatusText("已停止生成"); return; }
+        if (!inspected && preparedTurn.prepared.budget?.omittedMessages && !window.confirm(`上下文预算将省略最旧 ${preparedTurn.prepared.budget.omittedMessages} 条历史（原存档不变）。是否发送？可取消后查看提示词预览。`)) { input.setStatusText("已取消发送"); return; }
         input.setInputText("");
         for await (const update of runStreamingChatTurn({
           preparedTurn,
@@ -203,6 +203,7 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
           signal: controller.signal,
           regexScripts: input.activeRegexScripts,
         })) {
+          if (update.kind === "started" && update.prepared.budget?.omittedMessages && !window.confirm(`重新生成将省略最旧 ${update.prepared.budget.omittedMessages} 条历史，原存档不变。是否继续？`)) { input.setStatusText("已取消重新生成"); return; }
           input.setMessages(update.messages);
           input.setHasUnsavedChanges(true);
           input.setStatusText(
@@ -265,6 +266,7 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
         signal: controller.signal,
         regexScripts: input.activeRegexScripts,
       })) {
+        if (update.kind === "started" && update.prepared.budget?.omittedMessages && !window.confirm(`继续回复将省略最旧 ${update.prepared.budget.omittedMessages} 条历史，原存档不变。是否继续？`)) { input.setStatusText("已取消继续回复"); return; }
         input.setMessages(update.messages);
         input.setHasUnsavedChanges(true);
         input.setStatusText(

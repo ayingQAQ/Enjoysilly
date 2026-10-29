@@ -7,6 +7,7 @@ import {
 } from "react";
 import { ChatContextPanel, useChatContextLayout } from "./chat/ChatContextPanel";
 import { ChatPromptPreview } from "./chat/ChatPromptPreview";
+import { useChatBranch } from "./chat/useChatBranch";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
@@ -236,6 +237,12 @@ export function ChatScreen() {
     setUserName,
     userName,
   });
+
+  const handleBranch = useChatBranch({ messages, metadata: loadedChatMetadata, userName, characterName: activeCharacter.data.name,
+    archiveId: loadedArchiveId, archiveName: loadedArchiveName,
+    characterId: selectedCharacterId === localCharacterOptionId ? undefined : selectedCharacterId,
+    disabled: isStreaming || isImportingChat || isSaving, coordinator: saveCoordinator,
+    setBusy: setIsImportingChat, setError, setStatus: setStatusText, refresh: () => refreshChatArchives({ silent: true }) });
 
   useUnsavedChanges({
     label: "当前对话",
@@ -481,6 +488,7 @@ export function ChatScreen() {
         ].join(" ")}
       >
         <ChatConversationPane
+          onBranch={index => void handleBranch(index)}
           onPreview={() => void preview.prepare()}
           characterName={activeCharacter.data.name}
           contextOpen={isContextPanelOpen}

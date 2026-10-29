@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { parseChatCompletionPresetJson, serializeChatCompletionPresetJson } from '../lib/presetIO';
 
 describe('preset editing', () => {
-  it.each([['top_p', 1.1], ['temperature', -1], ['openai_max_tokens', 1.5], ['openai_max_tokens', 0]])('rejects invalid %s=%s', (key, value) => {
+  it.each([['top_p', 1.1], ['temperature', -1], ['openai_max_tokens', 1.5], ['openai_max_tokens', 0], ['openai_max_context', 0], ['openai_max_context', 1.5]])('rejects invalid %s=%s', (key, value) => {
     const draft: StoredPreset = { id: 'p', name: 'P', createdAt: 'a', updatedAt: 'a', payload: { prompts: [], prompt_order: [], [key]: value } };
     expect(() => validatePresetEdit(draft)).toThrow();
   });

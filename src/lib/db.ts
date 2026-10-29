@@ -26,6 +26,7 @@ export type StoredCharacter = StoredEntity<CharacterCard> & {
 export type StoredPreset = StoredEntity<ChatCompletionPreset>;
 export type StoredWorldInfo = StoredEntity<NativeWorldInfoBook | PortableCharacterBook>;
 export type StoredChat = StoredEntity<SillyTavernChatLog> & {
+  branch?: { version: 1; sourceArchiveId?: string; sourceUpdatedAt?: string; messageIndex: number; createdAt: string };
   characterId?: string;
   groupId?: string;
 };

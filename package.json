@@ -13,6 +13,7 @@
     "test:browser": "node scripts/run-browser-check.mjs",
     "test:layout": "node scripts/ui-layout-browser-check.mjs",
     "test:preview": "node scripts/prompt-preview-browser-check.mjs",
+    "test:long-chat": "node scripts/long-chat-browser-check.mjs",
     "typecheck": "tsc -b"
   },
   "dependencies": {

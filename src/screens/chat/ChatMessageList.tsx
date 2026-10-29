@@ -31,6 +31,7 @@ export function ChatMessageList({
   return (
     <div className="space-y-4">
       {messages.map((message, index) => (
+        <div key={`${message.name}-${index}`} data-chat-message-index={index} tabIndex={-1} className="rounded-lg focus:outline-2 focus:outline-[var(--accent)]">
         <ChatBubble
           key={`${message.name}-${index}`}
           disabled={disabled}
@@ -43,6 +44,7 @@ export function ChatMessageList({
           onSwipeNext={() => onSwipe(index, 1)}
           onSwipePrevious={() => onSwipe(index, -1)}
         />
+        </div>
       ))}
     </div>
   );

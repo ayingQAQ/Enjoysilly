@@ -179,7 +179,6 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
     setIsStreaming(true);
     setStatusText("正在请求模型");
     setError(null);
-    setInputText("");
 
     try {
       for await (const update of runStreamingChatTurn({
@@ -198,6 +197,11 @@ export function GroupChatScreen({ onBack }: { onBack?: () => void } = {}) {
         regexScripts: activeRegexScripts,
         worldInfoEntries,
       })) {
+        if (update.kind === "started") {
+          if (controller.signal.aborted) { setStatusText("已停止"); return; }
+          if (update.prepared.budget?.omittedMessages && !window.confirm(`上下文预算将省略最旧 ${update.prepared.budget.omittedMessages} 条历史，原消息不变。是否发送？`)) { setStatusText("已取消发送"); return; }
+          setInputText("");
+        }
         setMessages(update.messages);
         if (update.kind === "started") setStatusText("已连接，等待首个 token");
         else if (update.kind === "delta") setStatusText("正在接收");

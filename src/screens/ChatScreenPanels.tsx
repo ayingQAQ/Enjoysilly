@@ -212,6 +212,7 @@ export function ChatArchiveList({
                 <p className="mt-1 text-[var(--text-muted)]">
                   {archive.characterName ?? "未知角色"} · {archive.messageCount} 行
                 </p>
+                {archive.branch && <p className="mt-1 text-[var(--text-secondary)]">分支来源：{archive.branch.sourceArchiveId ? `存档 ${archive.branch.sourceArchiveId.slice(0, 8)}` : "未保存会话"} · 第 {archive.branch.messageIndex + 1} 条</p>}
               </div>
               <button
                 className="shrink-0 rounded-md border border-[var(--border-soft)] bg-[var(--surface)] px-2 py-1 text-xs font-medium transition hover:border-[var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"

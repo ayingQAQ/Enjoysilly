@@ -31,9 +31,10 @@ export function PresetEditor({ original, onClose, onSaved }: {
       <header className="flex shrink-0 items-center justify-between border-b p-4"><h2>编辑预设</h2><button disabled={busy} onClick={close}>关闭</button></header>
       <fieldset disabled={busy} className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
         <label className="block">名称<input autoFocus className={field} value={draft.name} onChange={e => update(d => { d.name = e.target.value; })}/></label>
-        <div className="grid gap-3 sm:grid-cols-3">{([['temperature','温度'],['top_p','核采样'],['openai_max_tokens','最大输出长度']] as const).map(([key,label]) =>
+        <div className="grid gap-3 sm:grid-cols-2">{([['temperature','温度'],['top_p','核采样'],['openai_max_tokens','最大输出长度'],['openai_max_context','上下文上限']] as const).map(([key,label]) =>
           <label key={key}>{label}<input className={field} type="number" min="0" step="any" value={draft.payload[key] ?? ''} onChange={e => update(d => { if (e.target.value === '') delete d.payload[key]; else d.payload[key] = Number(e.target.value); })}/></label>
         )}</div>
+        <p className="text-xs text-[var(--text-secondary)]">上下文 / 输出未设置时使用 8192 / 1024。输出预留须小于上下文上限；估算超限时仅省略最旧历史，必要内容放不下会阻止发送。</p>
         <PresetPromptFields payload={draft.payload} onChange={payload => update(d => { d.payload = payload; })}/>
       </fieldset>
       <footer className="shrink-0 border-t p-4"><p role="alert" className="text-red-600">{error}</p><button disabled={busy || !dirty} className="rounded bg-[var(--accent)] px-4 py-2 text-white disabled:opacity-50" onClick={() => void save()}>{busy ? '保存中…' : '保存预设'}</button></footer>

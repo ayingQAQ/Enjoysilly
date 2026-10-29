@@ -12,6 +12,7 @@ import { getChatMessageDisplayText } from "../lib/chatHistory";
 import type { ChatMessageLine } from "../types/chat";
 
 export interface ChatArchiveSummary {
+  branch?: StoredChat["branch"];
   id: string;
   name: string;
   createdAt: string;
@@ -131,6 +132,7 @@ export function createChatArchiveSummary(
 
   return {
     id: stored.id,
+    branch: stored.branch,
     name: stored.name,
     createdAt: stored.createdAt,
     updatedAt: stored.updatedAt,

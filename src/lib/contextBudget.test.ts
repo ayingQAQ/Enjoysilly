@@ -43,4 +43,10 @@ describe("context budget", () => {
     expect(calls).toBe(1);
     expect(result.messages[0].content).toBe("A");
   });
+  it("keeps depth world content and system prompts when trimming history", async () => {
+    const result = await prepareChatCompletionRequest({ ...base(), chatMessages: [message("旧".repeat(300)), message("新")], worldInfoEntries: [{ key: [], constant: true, content: "深度设定", position: 4, depth: 1 }] });
+    expect(result.chatHistory).toContain("深度设定");
+    expect(result.messages[0].content).toBe("必要设定");
+    expect(result.budget?.omittedMessages).toBe(1);
+  });
 });

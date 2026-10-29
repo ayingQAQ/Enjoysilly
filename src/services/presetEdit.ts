@@ -12,6 +12,8 @@ export function validatePresetEdit(draft: StoredPreset): void {
     throw new Error("top_p 必须在 0 到 1 之间。");
   }
   const maxTokens = draft.payload.openai_max_tokens;
+  const context = draft.payload.openai_max_context;
+  if (context !== undefined && (!Number.isSafeInteger(context) || context <= 0)) throw new Error("上下文上限必须是正整数。");
   if (maxTokens !== undefined && (!Number.isSafeInteger(maxTokens) || maxTokens <= 0)) {
     throw new Error("最大输出长度必须是正整数。");
   }
