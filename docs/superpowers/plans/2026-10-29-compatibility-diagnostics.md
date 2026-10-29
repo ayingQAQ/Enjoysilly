@@ -23,20 +23,20 @@
 ### Task 1: World-book execution diagnostics
 **Files:** src/lib/worldInfoScan.ts, src/lib/worldInfoDiagnostics.ts, src/lib/worldInfoDiagnostics.test.ts
 **Interfaces:** optional `WorldInfoScanOptions.diagnostics`; optional `WorldInfoScanResult.diagnostics` with per-source decisions, matched keys, scan rounds, outcome and inactive-feature notes.
-- [ ] Add failing tests for disabled/empty/no-key/selective/probability/recursive/budget decisions, unchanged inputs, duplicate IDs, zero recursion budget.
-- [ ] Run targeted tests RED; instrument existing decisions, fix budget bypass at recursionDepth=0, preserve default behavior.
-- [ ] Run targeted and full suite GREEN; commit.
+- [x] Add failing tests for disabled/empty/no-key/selective/probability/recursive/budget decisions, unchanged inputs, duplicate IDs, zero recursion budget.
+- [x] Run targeted tests RED; instrument existing decisions, fix budget bypass at recursionDepth=0, preserve default behavior.
+- [x] Run targeted and full suite GREEN; commit.
 
 ### Task 2: Asset-specific compatibility reports
 **Files:** src/lib/assetCompatibility.ts, src/lib/assetCompatibility.test.ts, src/components/CompatibilityPanel.tsx, existing character/world/preset detail components.
 **Interfaces:** `analyzeAssetCompatibility(kind, payload): CompatibilityFinding[]`, levels full/partial/retained/not-executed; reports contain evidence paths and limitations, never mutate payload.
-- [ ] Test real 修仙世界 and DarkSide fixtures, simple cards, unknown extensions, advanced world fields, unsupported marker/injection behavior and immutable roundtrip.
-- [ ] Implement report and detail UI; test RED→GREEN and full suite; commit.
+- [x] Test real 修仙世界 and DarkSide fixtures, simple cards, unknown extensions, advanced world fields, unsupported marker/injection behavior and immutable roundtrip.
+- [x] Implement report and detail UI; test RED→GREEN and full suite; commit.
 
 ### Task 3: Shared preparation and preview UI
 **Files:** src/lib/chatStreaming.ts, src/lib/chatRuntime.ts, src/lib/promptBuilder.ts, src/lib/chatPreview.test.ts, src/screens/chat/useChatPromptPreview.ts, src/screens/chat/ChatPromptPreview.tsx, ChatScreen/ChatConversationPane/useChatStreamingActions.
 **Interfaces:** `prepareStreamingChatTurn(input): Promise<{turn,prepared}>`; streaming optional preparedTurn; builder optional per-message source diagnostics. Preview reports final ordered messages with sources, estimates and scan decisions, not connection credentials.
-- [ ] Test preview includes processed input/current swipe, final prompt regex, source labels, deterministic snapshot reuse, and no diagnostic fields in model body.
-- [ ] Implement shared prep and stale-result guarding; modal preview with explicit send/cancel; retain ordinary send.
-- [ ] Browser test local mock: preview causes no request or chat write; confirmed body equals displayed snapshot, API key absent; changed inputs rebuild; Escape focus and narrow layout.
+- [x] Test preview includes processed input/current swipe, final prompt regex, source labels, deterministic snapshot reuse, and no diagnostic fields in model body.
+- [x] Implement shared prep and stale-result guarding; modal preview with explicit send/cancel; retain ordinary send.
+- [x] Browser test local mock: preview causes no request or chat write; confirmed body equals displayed snapshot, API key absent; changed inputs rebuild; Escape focus and narrow layout.
 - [ ] Run all unit/build/browser/layout tests in Edge and Chrome; document matrix/limits/progress; final read-only review, resolve significant findings, commit/merge/push.

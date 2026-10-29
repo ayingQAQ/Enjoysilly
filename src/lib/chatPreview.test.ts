@@ -30,7 +30,10 @@ describe("prepared next-message preview", () => {
   it("sends the inspected snapshot without rerolling macros or leaking diagnostics into the request", async () => {
     const source = input();
     let randomCalls = 0;
+    let probabilityCalls = 0;
     source.macroContext = { random: () => { randomCalls++; return 0; } };
+    source.worldInfoEntries = [{ key: ["太阳"], content: "世界设定", useProbability: true, probability: 50 }];
+    source.worldInfoScanOptions = { enabledFeatures: { probability: true }, random: () => { probabilityCalls++; return 0.25; } };
     const preview = await prepareStreamingChatTurn(source);
     let sent: unknown;
     const updates = [];
@@ -39,6 +42,7 @@ describe("prepared next-message preview", () => {
       return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', { headers: { "Content-Type": "text/event-stream" } });
     } })) updates.push(update);
     expect(randomCalls).toBe(1);
+    expect(probabilityCalls).toBe(1);
     expect(sent).toEqual(preview.prepared.requestBody);
     expect(sent).not.toHaveProperty("messageSources");
     expect(sent).not.toHaveProperty("worldInfoScanResult");
