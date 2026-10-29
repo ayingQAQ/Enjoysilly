@@ -68,7 +68,11 @@ export async function restoreFromBackupZip(
     settings: 0,
   };
 
-  for (const [path, bytes] of Object.entries(files)) {
+  const restoredAssetIds = new Map<string, string>();
+  // ZIP entry order is not significant. Tag settings depend on successful asset restores.
+  const orderedFiles = Object.entries(files).sort(([a], [b]) =>
+    Number(a.startsWith("settings/")) - Number(b.startsWith("settings/")));
+  for (const [path, bytes] of orderedFiles) {
     if (path === "backup.json") continue;
 
     try {
@@ -76,6 +80,7 @@ export async function restoreFromBackupZip(
         path,
         bytes,
         manifestFiles.get(path),
+        restoredAssetIds,
         database,
       );
 
@@ -137,6 +142,7 @@ async function restoreFileEntry(
   path: string,
   bytes: Uint8Array,
   manifestFile: BackupManifestFile | undefined,
+  restoredAssetIds: Map<string, string>,
   database?: MySillyDatabaseConnection,
 ): Promise<{ type: keyof BackupRestoreResult["restored"]; count: number } | undefined> {
   const text = new TextDecoder().decode(bytes);
@@ -162,6 +168,7 @@ async function restoreFileEntry(
       manifestFile,
     ) as StoredWorldInfo;
     await saveWorldInfo(stored, database);
+    if (manifestFile?.id) restoredAssetIds.set(`worlds:${manifestFile.id}`, stored.id);
     return { type: "worlds", count: 1 };
   }
 
@@ -174,6 +181,7 @@ async function restoreFileEntry(
       manifestFile,
     ) as StoredPreset;
     await savePreset(stored, database);
+    if (manifestFile?.id) restoredAssetIds.set(`presets:${manifestFile.id}`, stored.id);
     return { type: "presets", count: 1 };
   }
 
@@ -237,7 +245,13 @@ async function restoreFileEntry(
   }
 
   if (path.startsWith("settings/")) {
-    const key = manifestFile?.key ?? stripBackupPath(path, "settings/", ".json");
+    let key = manifestFile?.key ?? stripBackupPath(path, "settings/", ".json");
+    const tagKey = /^assetTags:v1:(worlds|presets):(.+)$/u.exec(key);
+    if (tagKey) {
+      const newId = restoredAssetIds.get(`${tagKey[1]}:${tagKey[2]}`);
+      if (!newId) throw new Error("本地标签对应的资产未恢复，已跳过标签，保留现有数据。");
+      key = `assetTags:v1:${tagKey[1]}:${newId}`;
+    }
     const value = JSON.parse(text);
     await saveSetting(
       {

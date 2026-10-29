@@ -13,7 +13,7 @@ export async function runDailyWorkflowChecks(browser, baseURL = "http://127.0.0.
     const nav = async name => {
       await page.getByRole("button", { name, exact: true }).click();
       if (name === "对话") await expect(page.getByRole("textbox", { name: "输入消息", exact: true })).toBeEnabled();
-      else await expect(page.getByRole("button", { name: { "角色卡": "导入角色卡", "世界书": "导入世界书", "预设": "导入预设", "设置": "保存基础设置" }[name], exact: true })).toBeVisible();
+      else await expect(page.getByRole("button", { name: { "角色卡": "导入角色卡", "世界书": "导入世界书", "预设": "导入预设", "设置": "保存基础设置", "分组聊天": "创建群组" }[name], exact: true })).toBeVisible();
     };
     const importJson = (name, payload) => page.locator('input[type="file"]').setInputFiles({ name: `${name}.json`, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(payload)) });
     const exportJson = async () => {
@@ -57,6 +57,18 @@ export async function runDailyWorkflowChecks(browser, baseURL = "http://127.0.0.
       await expect(page.getByRole("button", { name: "编辑角色卡", exact: true })).toHaveCount(0);
       await page.getByRole("searchbox", { name: "搜索角色" }).fill("月");
       await expect(page.getByRole("button", { name: "编辑角色卡", exact: true })).toHaveCount(1);
+
+      await nav("分组聊天");
+      await page.getByRole("button", { name: "创建群组", exact: true }).click();
+      await page.getByRole("textbox", { name: "群名称", exact: true }).fill("群组草稿");
+      await page.getByRole("checkbox", { name: "月角色修改", exact: true }).check();
+      await page.keyboard.press("Escape");
+      await leave.getByRole("button", { name: "取消", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "群名称", exact: true })).toHaveValue("群组草稿");
+      await page.keyboard.press("Escape");
+      await leave.getByRole("button", { name: "保存并离开", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "创建新群组", exact: true })).toBeHidden();
+      await expect(page.getByRole("heading", { name: "群组草稿", exact: true })).toBeVisible();
 
       for (const [section, name, payload] of [
         ["世界书", "月世界", { entries: { "0": { uid: 0, key: ["月"], content: "旧内容", comment: "月条目", order: 100, disable: false, position: 0, future: true } }, future: { keep: true } }],

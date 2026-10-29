@@ -1,5 +1,6 @@
 import { Modal } from "../components/Modal";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useUnsavedChanges } from "../hooks/useUnsavedChanges";
 import {
   Eye,
   MessageSquare,
@@ -236,6 +237,7 @@ function CreateGroupDialog({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [strategy, setStrategy] = useState<"listOrder" | "naturalRotation" | "manual">("listOrder");
   const [isSaving, setIsSaving] = useState(false);
+  const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const characterById = new Map(characters.map((character) => [character.id, character]));
 
@@ -255,9 +257,14 @@ function CreateGroupDialog({
   }, []);
 
   const handleCreate = useCallback(async () => {
+    if (saving.current) return false;
     const trimmed = name.trim();
-    if (!trimmed || selectedIds.size === 0) return;
+    if (!trimmed || selectedIds.size === 0) {
+      setError("请填写群名称并选择至少一个成员。");
+      return false;
+    }
 
+    saving.current = true;
     setIsSaving(true);
     setError(null);
 
@@ -270,15 +277,21 @@ function CreateGroupDialog({
       }));
       await createGroup(trimmed, members, { speakerStrategy: strategy });
       onCreated();
+      return true;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
+      saving.current = false;
       setIsSaving(false);
     }
   }, [characterById, name, selectedIds, strategy, onCreated]);
 
+  const confirmLeave = useUnsavedChanges({ label: "新建群组", dirty: name !== "" || selectedIds.size > 0 || strategy !== "listOrder", busy: isSaving, save: handleCreate });
+  const close = async () => { if (await confirmLeave()) onClose(); };
+
   return (
-    <Modal aria-label="创建新群组" busy={isSaving} onRequestClose={onClose} className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-2xl">
+    <Modal aria-label="创建新群组" busy={isSaving} onRequestClose={close} className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-2xl">
       <fieldset disabled={isSaving}>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -288,7 +301,7 @@ function CreateGroupDialog({
           <button
             className="grid size-9 place-items-center rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)]"
             type="button"
-            onClick={onClose}
+            onClick={() => void close()}
           >
             <X size={16} />
           </button>
@@ -352,7 +365,7 @@ function CreateGroupDialog({
             <button
               className="flex-1 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-2.5 text-sm font-medium"
               type="button"
-              onClick={onClose}
+              onClick={() => void close()}
               disabled={isSaving}
             >
               取消
