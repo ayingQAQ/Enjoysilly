@@ -4,6 +4,7 @@ import { BookOpen, Bot, Pencil, X } from "lucide-react";
 
 import type { CharacterAssetSummary } from "../../services/assetCatalog";
 import type { CharacterDetailSummary } from "../../services/characterDetails";
+import { CompatibilityPanel } from "../../components/CompatibilityPanel";
 
 export type CharacterSortMode = "updated" | "name" | "worldEntries";
 
@@ -105,6 +106,7 @@ export function CharacterDetailDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <CompatibilityPanel kind="character" payload={detail.stored.payload} />
         <div className="grid gap-3 sm:grid-cols-4">
           <MiniMetric label="Spec" value={formatSpec(detail.spec, detail.specVersion)} />
           <MiniMetric label="标签" value={detail.tags.length} />

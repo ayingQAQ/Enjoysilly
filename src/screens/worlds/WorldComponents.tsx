@@ -1,4 +1,5 @@
 import { Modal, assetFocusTarget } from "../../components/Modal";
+import { CompatibilityPanel } from "../../components/CompatibilityPanel";
 import { Pencil, X } from "lucide-react";
 
 import type { WorldInfoAssetSummary } from "../../services/assetCatalog";
@@ -69,6 +70,7 @@ export function WorldInfoDetailDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <CompatibilityPanel kind="world" payload={detail.stored.payload} />
         <div className="grid gap-3 sm:grid-cols-4">
           <DetailMetric label="方言" value={dialectLabels[detail.dialect]} />
           <DetailMetric label="条目" value={detail.entryCount} />

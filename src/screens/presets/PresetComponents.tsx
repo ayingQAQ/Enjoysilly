@@ -1,4 +1,5 @@
 import { Modal, assetFocusTarget } from "../../components/Modal";
+import { CompatibilityPanel } from "../../components/CompatibilityPanel";
 import type { ReactNode } from "react";
 import { Regex, X } from "lucide-react";
 
@@ -68,6 +69,7 @@ export function PresetDetailDrawer({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <CompatibilityPanel kind="preset" payload={detail.stored.payload} />
         <div className="grid gap-3 sm:grid-cols-4">
           <MiniMetric label="Prompt" value={detail.promptCount} />
           <MiniMetric label="启用" value={detail.enabledPromptCount} />
