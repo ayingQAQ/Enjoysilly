@@ -1,4 +1,5 @@
 import type { ChatMessageLine } from "../types/chat";
+import { worldInfoExecutionNotes, type WorldInfoAttempt, type WorldInfoDiagnostic } from "./worldInfoDiagnostics";
 import type {
   NativeWorldInfoEntry,
   PortableWorldInfoEntry,
@@ -30,6 +31,7 @@ export interface WorldInfoScanRuntimeState {
 }
 
 export interface WorldInfoScanOptions {
+  diagnostics?: boolean;
   scanDepth?: number;
   caseSensitive?: boolean;
   mode?: "simple" | "full";
@@ -54,12 +56,13 @@ export interface ScannedWorldInfoEntry {
 }
 
 export interface WorldInfoScanResult {
+  diagnostics?: WorldInfoDiagnostic[];
   before: ScannedWorldInfoEntry[];
   after: ScannedWorldInfoEntry[];
   atDepth: ScannedWorldInfoEntry[];
 }
 
-type WorldInfoScanBucket = keyof WorldInfoScanResult;
+type WorldInfoScanBucket = "before" | "after" | "atDepth";
 
 interface NormalizedWorldInfoEntry {
   sourceIndex: number;
@@ -93,23 +96,35 @@ export function scanWorldInfo(
   options: WorldInfoScanOptions = {},
 ): WorldInfoScanResult {
   const normalizedEntries = entries.map(normalizeEntry);
+  const diagnostics: WorldInfoDiagnostic[] | undefined = options.diagnostics ? normalizedEntries.map(e => ({
+    sourceIndex: e.sourceIndex, id: e.id, comment: e.comment, bucket: e.bucket,
+    outcome: !e.enabled ? "disabled" : !e.content.trim() ? "empty" : e.delayUntilRecursion ? "recursion-only" : "no-keyword",
+    attempts: [], notes: worldInfoExecutionNotes(e.entry, options),
+  })) : undefined;
+  const finish = (hits: Array<ScannedWorldInfoEntry & { bucket: WorldInfoScanBucket }>) => {
+    const kept = options.enabledFeatures?.tokenBudget ? applyTokenBudget(hits, options) : hits;
+    if (diagnostics) {
+      const selected = new Set(kept.map(e => e.sourceIndex));
+      for (const hit of hits) diagnostics[hit.sourceIndex].outcome = selected.has(hit.sourceIndex) ? "selected" : "budget";
+    }
+    const result = buildScanResult(kept);
+    return diagnostics ? { ...result, diagnostics } : result;
+  };
 
   const firstRound = runSingleScan(
     normalizedEntries.filter((e) => !e.delayUntilRecursion),
     chatMessages,
     options,
+    diagnostics,
+    0,
   );
 
   if (options.enabledFeatures?.recursion !== true) {
-    if (options.enabledFeatures?.tokenBudget === true) {
-      return buildScanResult(applyTokenBudget(firstRound, options));
-    }
-
-    return buildScanResult(firstRound);
+    return finish(firstRound);
   }
 
   const depth = Math.max(0, Math.floor(options.recursionDepth ?? 1));
-  if (depth === 0) return buildScanResult(firstRound);
+  if (depth === 0) return finish(firstRound);
 
   const triggered = new Set<number>();
   let poolContent = "";
@@ -132,6 +147,8 @@ export function scanWorldInfo(
       ),
       [poolContent],
       options,
+      diagnostics,
+      round + 1,
     );
 
     if (roundHits.length === 0) break;
@@ -151,21 +168,19 @@ export function scanWorldInfo(
     poolContent = nextPool;
   }
 
-  if (options.enabledFeatures?.tokenBudget === true) {
-    return buildScanResult(applyTokenBudget(allResults, options));
-  }
-
-  return buildScanResult(allResults);
+  return finish(allResults);
 }
 
 function runSingleScan(
   candidates: NormalizedWorldInfoEntry[],
   messages: Array<string | ChatMessageLine>,
   options: WorldInfoScanOptions,
+  diagnostics?: WorldInfoDiagnostic[],
+  round = 0,
 ): Array<ScannedWorldInfoEntry & { bucket: WorldInfoScanBucket }> {
   return candidates
     .filter((entry) => entry.enabled && entry.content.trim().length > 0)
-    .map((entry) => scanEntry(entry, messages, options))
+    .map((entry) => scanEntry(entry, messages, options, diagnostics?.[entry.sourceIndex], round))
     .filter((entry): entry is ScannedWorldInfoEntry & { bucket: WorldInfoScanBucket } =>
       Boolean(entry),
     );
@@ -214,12 +229,19 @@ function scanEntry(
   entry: NormalizedWorldInfoEntry,
   chatMessages: Array<string | ChatMessageLine>,
   options: WorldInfoScanOptions,
+  diagnostic?: WorldInfoDiagnostic,
+  round = 0,
 ): (ScannedWorldInfoEntry & { bucket: WorldInfoScanBucket }) | undefined {
   const scanText = createScanText(chatMessages, entry, options);
   const matchedKeys = entry.keys.filter((key) =>
     matchesKey(key, scanText, entry, options),
   );
   const reasons: ScannedWorldInfoEntry["reasons"] = [];
+  const attempt: WorldInfoAttempt = { round, matchedKeys, matchedSecondary: [], reasons, outcome: "no-keyword" };
+  const decide = (outcome: WorldInfoAttempt["outcome"]) => {
+    attempt.outcome = outcome;
+    if (diagnostic) { diagnostic.outcome = outcome; diagnostic.attempts.push(attempt); }
+  };
 
   if (entry.constant) {
     reasons.push("constant");
@@ -232,8 +254,10 @@ function scanEntry(
       const matchedSecondary = entry.keysecondary.filter((key) =>
         matchesKey(key, scanText, entry, options),
       );
+      attempt.matchedSecondary = matchedSecondary;
 
       if (!evaluateSelectiveLogic(matchedSecondary.length, entry.keysecondary.length, entry.selectiveLogic)) {
+        decide("selective");
         return undefined;
       }
     }
@@ -242,13 +266,16 @@ function scanEntry(
   }
 
   if (reasons.length === 0) {
+    decide("no-keyword");
     return undefined;
   }
 
-  if (options.enabledFeatures?.probability === true && !passesProbability(entry, options)) {
+  if (options.enabledFeatures?.probability === true && !passesProbability(entry, options, attempt)) {
+    decide("probability");
     return undefined;
   }
 
+  decide("selected");
   return {
     sourceIndex: entry.sourceIndex,
     id: entry.id,
@@ -287,6 +314,7 @@ function evaluateSelectiveLogic(
 function passesProbability(
   entry: NormalizedWorldInfoEntry,
   options: WorldInfoScanOptions,
+  attempt: WorldInfoAttempt,
 ): boolean {
   if (!entry.useProbability || entry.probability === undefined) return true;
 
@@ -295,7 +323,8 @@ function passesProbability(
 
   const random = options.random ?? Math.random;
 
-  return random() * 100 < entry.probability;
+  attempt.probabilityRoll = random() * 100;
+  return attempt.probabilityRoll < entry.probability;
 }
 
 function normalizeEntry(
