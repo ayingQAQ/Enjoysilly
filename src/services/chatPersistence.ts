@@ -1,7 +1,6 @@
 import { formatSillyTavernChatDate } from "../lib/chatTurn";
 import {
   getMySillyDatabase,
-  saveChat,
   type MySillyDatabaseConnection,
   type StoredChat,
 } from "../lib/db";
@@ -33,15 +32,33 @@ export interface CreateStoredChatSnapshotInput
 export interface SaveChatSnapshotToDatabaseInput
   extends CreateStoredChatSnapshotInput {
   database?: MySillyDatabaseConnection;
+  expectedUpdatedAt?: string | null;
 }
 
 export async function saveChatSnapshotToDatabase(
   input: SaveChatSnapshotToDatabaseInput,
 ): Promise<StoredChat> {
   const database = input.database ?? (await getMySillyDatabase());
-  const stored = createStoredChatSnapshot(input);
-
-  await saveChat(stored, database);
+  const transaction = database.transaction("chats", "readwrite");
+  const previous = input.id ? await transaction.store.get(input.id) : undefined;
+  if (input.expectedUpdatedAt !== undefined && (previous?.updatedAt ?? null) !== input.expectedUpdatedAt) {
+    await transaction.done;
+    throw new Error("存档保存冲突：原存档已被其他页面修改或删除。请导出当前内容后重新加载，避免覆盖。");
+  }
+  const stored = createStoredChatSnapshot({
+    ...input,
+    metadata: input.metadata ?? previous?.payload.metadata,
+    name: input.name ?? previous?.name,
+  });
+  if (previous) {
+    stored.createdAt = previous.createdAt;
+    const previousTime = Date.parse(previous.updatedAt);
+    if (Number.isFinite(previousTime) && Date.parse(stored.updatedAt) <= previousTime) {
+      stored.updatedAt = new Date(previousTime + 1).toISOString();
+    }
+  }
+  await transaction.store.put(stored);
+  await transaction.done;
 
   return stored;
 }

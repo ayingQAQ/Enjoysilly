@@ -70,6 +70,22 @@ export function readPngTextChunks(bytes: Uint8Array): PngTextChunk[] {
   return chunks;
 }
 
+export function assertValidPngStructure(bytes: Uint8Array): void {
+  assertPngSignature(bytes);
+
+  let chunks: PngChunk[];
+
+  try {
+    chunks = extractChunks(bytes);
+  } catch {
+    throw new PngParseError("PNG chunk structure is invalid.");
+  }
+
+  if (chunks[0]?.name !== "IHDR" || chunks.at(-1)?.name !== "IEND") {
+    throw new PngParseError("PNG must contain IHDR and IEND chunks.");
+  }
+}
+
 export function decodeCharacterCardFromPng(bytes: Uint8Array): CharacterCard {
   const chunks = readPngTextChunks(bytes);
   const cardChunk =

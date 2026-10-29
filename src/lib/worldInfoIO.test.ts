@@ -117,4 +117,28 @@ describe("world info dialect mapping", () => {
       enabled: false,
     });
   });
+
+  it("preserves unknown portable extensions through a full dialect round trip", () => {
+    const portable = {
+      keys: ["扩展"],
+      content: "保留扩展字段。",
+      extensions: {
+        probability: 71,
+        useProbability: true,
+        custom_nested: { keep: [1, 2, 3] },
+        custom_flag: "keep",
+      },
+    };
+
+    const native = portableEntryToNative(portable, 5);
+    const roundTripped = nativeEntryToPortable(native);
+
+    expect(native.extensions).toEqual(portable.extensions);
+    expect(roundTripped.extensions).toMatchObject(portable.extensions);
+    expect(roundTripped).toMatchObject({
+      keys: ["扩展"],
+      content: "保留扩展字段。",
+      id: 5,
+    });
+  });
 });

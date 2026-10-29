@@ -51,6 +51,33 @@ function createMessages(): ChatMessageLine[] {
 }
 
 describe("chat persistence service", () => {
+  it("rejects stale writes and deleted archives when a baseline version is supplied", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    const input = { database, id: "conflict", messages: createMessages(), userName: "U", characterName: "C" };
+    try {
+      const first = await saveChatSnapshotToDatabase(input);
+      const second = await saveChatSnapshotToDatabase({ ...input, expectedUpdatedAt: first.updatedAt, messages: [] });
+      await expect(saveChatSnapshotToDatabase({ ...input, expectedUpdatedAt: first.updatedAt })).rejects.toThrow("冲突");
+      expect((await getChat(input.id, database))?.payload.messages).toEqual([]);
+      await database.delete("chats", input.id);
+      await expect(saveChatSnapshotToDatabase({ ...input, expectedUpdatedAt: second.updatedAt })).rejects.toThrow("冲突");
+      expect(await getChat(input.id, database)).toBeUndefined();
+    } finally { database.close(); }
+  });
+  it("preserves archive creation time and imported metadata when updating", async () => {
+    const database = await openMySillyDatabase(createTestDatabaseName());
+    try {
+      await saveChatSnapshotToDatabase({ database, id: "existing", messages: createMessages(),
+        userName: "User", characterName: "角色", now: new Date("2026-01-01T00:00:00Z"),
+        metadata: { create_date: "original", unknown: { keep: true } } });
+      const updated = await saveChatSnapshotToDatabase({ database, id: "existing", messages: [],
+        userName: "User", characterName: "角色", now: new Date("2026-10-29T00:00:00Z") });
+      expect(updated.createdAt).toBe("2026-01-01T00:00:00.000Z");
+      expect(updated.payload.metadata).toMatchObject({ create_date: "original", unknown: { keep: true } });
+      expect((await getChat("existing", database))?.payload.messages).toEqual([]);
+    } finally { database.close(); }
+  });
+
   it("creates a SillyTavern JSONL-compatible chat snapshot without mutating messages", () => {
     const messages = createMessages();
     const originalMessages = structuredClone(messages);

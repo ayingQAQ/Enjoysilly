@@ -114,6 +114,7 @@ export function portableEntryToNative(
 
   return pruneUndefined({
     ...rest,
+    extensions,
     uid: id ?? fallbackNumber(ext.id, fallbackUid),
     key: keys,
     keysecondary: secondary_keys,
@@ -173,10 +174,12 @@ export function nativeEntryToPortable(
     scanDepth,
     automationId,
     role,
+    extensions: sourceExtensions,
     ...rest
   } = entry;
   const portablePosition = mapNativePosition(position);
   const extensions = pruneUndefined({
+    ...asRecord(sourceExtensions),
     selectiveLogic,
     position,
     role,
