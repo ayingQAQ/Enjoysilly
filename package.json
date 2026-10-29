@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:browser": "node scripts/run-browser-check.mjs",
     "test:layout": "node scripts/ui-layout-browser-check.mjs",
+    "test:preview": "node scripts/prompt-preview-browser-check.mjs",
     "typecheck": "tsc -b"
   },
   "dependencies": {

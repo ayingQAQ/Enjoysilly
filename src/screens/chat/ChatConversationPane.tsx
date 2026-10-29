@@ -1,4 +1,4 @@
-import { MessageSquare, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { Eye, MessageSquare, PanelRightOpen, PanelRightClose } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 
 import type { RegexScriptLike } from "../../lib/regexEngine";
@@ -9,6 +9,7 @@ import { ChatMessageList } from "./ChatMessageList";
 import type { ChatHtmlCardAction } from "./ChatMessageBubble";
 
 interface ChatConversationPaneProps {
+  onPreview: () => void;
   characterName: string;
   contextOpen: boolean;
   onToggleContext: () => void;
@@ -48,8 +49,10 @@ export function ChatConversationPane(props: ChatConversationPaneProps) {
             <p className="mt-0.5 text-xs text-[var(--text-secondary)]">对话 · {props.messages.length} 条消息</p>
           </div>
         </div>
+        <button type="button" aria-label="预览提示词" title="预览提示词" disabled={!props.canSend || disabled} onClick={props.onPreview}
+          className="ml-auto grid size-11 shrink-0 place-items-center rounded-lg border border-[var(--border-soft)] disabled:opacity-40"><Eye size={16}/></button>
         <button type="button" aria-label={props.contextOpen ? "收起上下文" : "打开上下文"} aria-expanded={props.contextOpen}
-          className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-[var(--border-soft)] px-3 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-[var(--border-soft)] px-3 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
           onClick={props.onToggleContext}>
           {props.contextOpen ? <PanelRightClose size={16}/> : <PanelRightOpen size={16}/>}<span className="hidden sm:inline">角色与存档</span>
         </button>

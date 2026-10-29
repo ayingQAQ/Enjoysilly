@@ -40,7 +40,10 @@ export interface RunStreamingChatTurnInput
   userExtra?: UnknownRecord;
   assistantExtra?: UnknownRecord;
   regexScripts?: RegexScriptLike[];
+  preparedTurn?: PreparedStreamingChatTurn;
 }
+export interface PreparedStreamingChatTurn { turn: ChatTurnState; prepared: PreparedChatCompletionRequest }
+export type PrepareStreamingChatTurnInput = Omit<RunStreamingChatTurnInput, "baseUrl" | "apiKey" | "headers" | "signal" | "fetchImpl" | "preparedTurn">;
 
 export interface RunStreamingChatRerollInput
   extends Omit<
@@ -162,9 +165,7 @@ export interface StreamingChatContinueFinishedUpdate {
   messages: ChatMessageLine[];
 }
 
-export async function* runStreamingChatTurn(
-  input: RunStreamingChatTurnInput,
-): AsyncGenerator<StreamingChatTurnUpdate> {
+export async function prepareStreamingChatTurn(input: PrepareStreamingChatTurnInput): Promise<PreparedStreamingChatTurn> {
   const processedUserText = await applyUserInputRegex(input.userText, input.regexScripts);
   const turn = startChatTurn({
     messages: input.messages,
@@ -179,7 +180,15 @@ export async function* runStreamingChatTurn(
     ...input,
     chatMessages: turn.messages,
     stream: true,
+    diagnostics: true,
   });
+  return { turn, prepared };
+}
+
+export async function* runStreamingChatTurn(
+  input: RunStreamingChatTurnInput,
+): AsyncGenerator<StreamingChatTurnUpdate> {
+  const { turn, prepared } = input.preparedTurn ?? await prepareStreamingChatTurn(input);
   let messages = turn.messages;
   let content = "";
   let finishReason: string | undefined;

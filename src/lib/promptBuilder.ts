@@ -19,6 +19,7 @@ export interface ChatCompletionMessage {
   role: PromptRole;
   content: string;
 }
+export interface PromptMessageSource { identifier: string; name: string; kind: "marker" | "preset" | "group" }
 
 export interface PromptBuilderGroupMember {
   characterId: string;
@@ -26,6 +27,7 @@ export interface PromptBuilderGroupMember {
 }
 
 export interface PromptBuilderInput {
+  messageSources?: PromptMessageSource[];
   preset: ChatCompletionPreset;
   character: CharacterCard;
   userName?: string;
@@ -71,6 +73,7 @@ export async function buildChatCompletionMessages(
     if (normalizedContent.length === 0) {
       return [];
     }
+    input.messageSources?.push({ identifier: prompt.identifier, name: prompt.name || prompt.identifier, kind: prompt.marker ? "marker" : "preset" });
 
     return [
       {
@@ -117,6 +120,7 @@ function prependGroupContext(
     role: "system",
     content: contextLine,
   };
+  input.messageSources?.unshift({ identifier: "group", name: groupLabel, kind: "group" });
 
   return [contextMessage, ...messages];
 }

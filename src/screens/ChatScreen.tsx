@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { ChatContextPanel, useChatContextLayout } from "./chat/ChatContextPanel";
+import { ChatPromptPreview } from "./chat/ChatPromptPreview";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
@@ -123,6 +124,8 @@ export function ChatScreen() {
   const isImportingChat = isImportingFile || !draftRecovery.ready;
   const {
     canContinue,
+    preview,
+    sendPreview,
     handleContinueMessage,
     handleRerollMessage,
     handleSend,
@@ -450,6 +453,7 @@ export function ChatScreen() {
 
   return (
     <section className="relative mx-auto flex h-full min-h-0 max-w-[1600px] flex-col p-2 sm:p-4 lg:p-5">
+      {preview.open && <ChatPromptPreview data={preview.data} error={preview.error} onClose={preview.close} onSend={sendPreview} />}
       {messageEdit && <ChatMessageEditor draft={messageEdit} onChange={setMessageEdit}
         onClose={async () => {
           if (await draftRecovery.persist({ ...workspaceDraft, messageEdit: null })) setMessageEdit(null);
@@ -477,6 +481,7 @@ export function ChatScreen() {
         ].join(" ")}
       >
         <ChatConversationPane
+          onPreview={() => void preview.prepare()}
           characterName={activeCharacter.data.name}
           contextOpen={isContextPanelOpen}
           onToggleContext={() => setIsContextPanelOpen(value => !value)}

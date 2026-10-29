@@ -8,6 +8,8 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
+import { useChatPromptPreview } from "./useChatPromptPreview";
+import type { PreparedStreamingChatTurn } from "../../lib/chatStreaming";
 
 import {
   runStreamingChatContinue,
@@ -54,6 +56,13 @@ interface UseChatStreamingActionsInput {
 
 export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
   const [isStreaming, setIsStreaming] = useState(false);
+  const sendLock = useRef(false);
+  const preview = useChatPromptPreview({
+    model: input.model.trim(), preset: input.activePreset, character: input.activeCharacter,
+    messages: input.messages, userName: normalizeName(input.userName, defaultUserName),
+    userText: input.inputText.trim(), personaDescription: input.personaDescription,
+    worldInfoEntries: input.activeWorldInfoEntries, regexScripts: input.activeRegexScripts,
+  }, !isStreaming && !input.isImportingChat && input.isCharacterReady && input.isPresetReady && Boolean(input.inputText.trim()));
   const abortControllerRef = useRef<AbortController | null>(null);
   useEffect(() => () => abortControllerRef.current?.abort(), []);
   const lastAssistantMessageIndex = getLastAssistantMessageIndex(input.messages);
@@ -65,15 +74,15 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
     lastAssistantMessageIndex !== undefined;
 
   const handleSend = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
+    async (event?: FormEvent<HTMLFormElement>, inspected?: PreparedStreamingChatTurn) => {
+      event?.preventDefault();
       const submittedText = input.interactiveSubmitTextRef.current ?? input.inputText;
       input.interactiveSubmitTextRef.current = null;
       const userText = submittedText.trim();
       const trimmedBaseUrl = input.baseUrl.trim();
       const trimmedModel = input.model.trim();
 
-      if (!userText || isStreaming || input.isImportingChat) return;
+      if (!userText || isStreaming || sendLock.current || input.isImportingChat) return;
       if (!input.isCharacterReady || !input.isPresetReady) {
         input.setError("正在读取选中的角色或预设，请稍后再发送。");
         return;
@@ -88,6 +97,7 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
       }
 
       const controller = new AbortController();
+      sendLock.current = true;
       abortControllerRef.current = controller;
       setIsStreaming(true);
       input.setStatusText("正在请求模型");
@@ -98,6 +108,7 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
 
       try {
         for await (const update of runStreamingChatTurn({
+          preparedTurn: inspected,
           baseUrl: trimmedBaseUrl,
           apiKey: input.apiKey,
           model: trimmedModel,
@@ -131,6 +142,7 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
         input.setError(formatChatSendError(error));
         input.setStatusText("请求失败");
       } finally {
+        sendLock.current = false;
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
         setIsStreaming(false);
       }
@@ -276,6 +288,13 @@ export function useChatStreamingActions(input: UseChatStreamingActionsInput) {
   }, []);
 
   return {
+    preview,
+    sendPreview: () => {
+      if (!preview.data) return;
+      const inspected = preview.data;
+      preview.close();
+      void handleSend(undefined, inspected);
+    },
     canContinue,
     handleContinueMessage,
     handleRerollMessage,

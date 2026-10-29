@@ -11,6 +11,7 @@ import {
   buildChatCompletionMessages,
   type ChatCompletionMessage,
   type PromptBuilderInput,
+  type PromptMessageSource,
 } from "./promptBuilder";
 import {
   scanWorldInfo,
@@ -21,6 +22,7 @@ import {
 } from "./worldInfoScan";
 
 export interface PrepareChatCompletionRequestInput {
+  diagnostics?: boolean;
   model: string;
   preset: ChatCompletionPreset;
   character: CharacterCard;
@@ -41,6 +43,7 @@ export interface PrepareChatCompletionRequestInput {
 }
 
 export interface PreparedChatCompletionRequest {
+  messageSources?: PromptMessageSource[];
   chatHistory: string;
   messages: ChatCompletionMessage[];
   requestBody: OpenAICompatibleChatCompletionRequestBody;
@@ -51,6 +54,7 @@ export async function prepareChatCompletionRequest(
   input: PrepareChatCompletionRequestInput,
 ): Promise<PreparedChatCompletionRequest> {
   const chatMessages = input.chatMessages ?? [];
+  const messageSources: PromptMessageSource[] | undefined = input.diagnostics ? [] : undefined;
   const worldInfoScanResult = createWorldInfoScanResult(input, chatMessages);
   const chatHistory = buildChatHistoryText(chatMessages, {
     maxMessages: input.maxHistoryMessages,
@@ -58,6 +62,7 @@ export async function prepareChatCompletionRequest(
     atDepthEntries: worldInfoScanResult?.atDepth,
   });
   const messages = await buildChatCompletionMessages({
+    messageSources,
     preset: input.preset,
     character: input.character,
     userName: input.userName,
@@ -81,6 +86,7 @@ export async function prepareChatCompletionRequest(
   });
 
   return {
+    ...(messageSources ? { messageSources } : {}),
     chatHistory,
     messages,
     requestBody,
@@ -99,7 +105,7 @@ function createWorldInfoScanResult(
   return scanWorldInfo(
     input.worldInfoEntries,
     chatMessages.map(getChatMessageDisplayText),
-    input.worldInfoScanOptions,
+    { ...input.worldInfoScanOptions, diagnostics: input.diagnostics || input.worldInfoScanOptions?.diagnostics },
   );
 }
 
