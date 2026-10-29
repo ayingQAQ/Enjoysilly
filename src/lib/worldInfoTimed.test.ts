@@ -41,4 +41,11 @@ describe("world timed effects", () => {
     history[0].mes = "sun"; delete history[0].swipes;
     expect(replayTimedWorldInfo(entries, history, {}).before).toHaveLength(0);
   });
+  it("keeps the same activation boundary when continuing an assistant response", () => {
+    const entries = [{ key: ["moon"], content: "world", sticky: 4, scanDepth: 1 }];
+    const before = replayTimedWorldInfo(entries, [msg("moon", true)], {});
+    const continuation = replayTimedWorldInfo(entries, [msg("moon", true), msg("reply without keyword", false)], {});
+    expect(continuation.before.map(e => e.content)).toEqual(["world"]);
+    expect(continuation.runtimeState).toEqual(before.runtimeState);
+  });
 });

@@ -25,5 +25,6 @@ export function replayTimedWorldInfo(entries: WorldInfoScanInputEntry[], message
     });
     state = result.runtimeState ?? state;
   }
-  return scanWorldInfo(entries, texts, { ...options, enabledFeatures, runtimeState: { ...state, turnIndex: Math.max(0, lastUser) } });
+  const boundaryTexts = lastUser >= 0 ? texts.slice(0, lastUser + 1) : texts;
+  return scanWorldInfo(entries, boundaryTexts, { ...options, enabledFeatures, runtimeState: { ...state, turnIndex: Math.max(0, lastUser) } });
 }

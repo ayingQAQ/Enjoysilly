@@ -1,5 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+await mkdir(".playwright-mcp", { recursive: true });
 const browser = await chromium.launch({ channel: process.env.E2E_BROWSER_CHANNEL || "msedge" });
 try {
   for (const width of process.env.E2E_LONG_FOCUS === "timed" ? [] : [360, 1440]) {
@@ -24,6 +26,7 @@ try {
       await expect(page.getByText("第 501 条消息 · 1 / 1", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "定位消息", exact: true }).click();
       await expect(page.locator('[data-chat-message-index="500"]')).toBeInViewport();
+      await page.screenshot({ path: `.playwright-mcp/long-chat-search-${width}.png` });
       const composer = page.getByRole("textbox", { name: "输入消息", exact: true });
       await composer.fill("长".repeat(9000));
       await page.getByRole("button", { name: "发送", exact: true }).click();
