@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, PanelRightOpen, PanelRightClose } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 
 import type { RegexScriptLike } from "../../lib/regexEngine";
@@ -9,6 +9,9 @@ import { ChatMessageList } from "./ChatMessageList";
 import type { ChatHtmlCardAction } from "./ChatMessageBubble";
 
 interface ChatConversationPaneProps {
+  characterName: string;
+  contextOpen: boolean;
+  onToggleContext: () => void;
   disabled?: boolean;
   canSend: boolean;
   displayRegexScripts: RegexScriptLike[];
@@ -34,20 +37,26 @@ export function ChatConversationPane(props: ChatConversationPaneProps) {
   const disabled = props.isStreaming || Boolean(props.disabled);
 
   return (
-    <div className="flex min-h-[620px] w-full min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] shadow-sm xl:h-full xl:min-h-0">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border-soft)] bg-[var(--surface)]">
       <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-soft)] px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--accent-weak)] text-[var(--accent-strong)]">
             <MessageSquare size={18} />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold">对话内容</h2>
+            <h1 className="truncate text-base font-semibold">{props.characterName || "对话内容"}</h1>
+            <p className="mt-0.5 text-xs text-[var(--text-secondary)]">对话 · {props.messages.length} 条消息</p>
           </div>
         </div>
+        <button type="button" aria-label={props.contextOpen ? "收起上下文" : "打开上下文"} aria-expanded={props.contextOpen}
+          className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-[var(--border-soft)] px-3 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+          onClick={props.onToggleContext}>
+          {props.contextOpen ? <PanelRightClose size={16}/> : <PanelRightOpen size={16}/>}<span className="hidden sm:inline">角色与存档</span>
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-3xl">
           <ChatMessageList
             disabled={disabled}
             displayRegexScripts={props.displayRegexScripts}

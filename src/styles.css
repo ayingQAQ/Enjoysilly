@@ -9,7 +9,7 @@
   --border-strong: #d6cbbd;
   --text-primary: #2a2723;
   --text-secondary: #6d665d;
-  --text-muted: #9d9488;
+  --text-muted: #786f63;
   --accent: #5f8478;
   --accent-strong: #4c6c61;
   --accent-weak: #e7efeb;
@@ -24,7 +24,7 @@
   --border-strong: #514b45;
   --text-primary: #e8e4df;
   --text-secondary: #a9a29b;
-  --text-muted: #7a736c;
+  --text-muted: #aaa298;
   --accent: #7fbaa3;
   --accent-strong: #9cd4bc;
   --accent-weak: #2a3d35;
@@ -61,7 +61,7 @@
     --border-strong: #514b45;
     --text-primary: #e8e4df;
     --text-secondary: #a9a29b;
-    --text-muted: #7a736c;
+    --text-muted: #aaa298;
     --accent: #7fbaa3;
     --accent-strong: #9cd4bc;
     --accent-weak: #2a3d35;
@@ -283,4 +283,30 @@ button {
   max-height: 100dvh;
   max-width: min(100vw, 48rem);
   overflow: hidden;
+}
+.asset-page {
+  width: 100%;
+  max-width: 1280px;
+  min-height: 100%;
+  margin-inline: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.asset-page-header { padding-bottom: 20px; border-bottom: 1px solid var(--border-soft); }
+.asset-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 639px) {
+  .asset-page { padding: 16px; gap: 16px; }
+  .asset-page-header { padding-bottom: 16px; }
+}
+@media (pointer: coarse) {
+  button, select, summary { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
 }

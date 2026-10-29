@@ -12,14 +12,7 @@ export const dialectLabels: Record<WorldInfoAssetSummary["dialect"], string> = {
   portable: "角色卡内嵌",
 };
 
-export function SummaryTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
-      <p className="text-2xl font-semibold">{value}</p>
-      <p className="text-sm text-[var(--text-muted)]">{label}</p>
-    </div>
-  );
-}
+export { AssetMetric as SummaryTile } from "../../components/AssetMetric";
 
 export function MiniMetric({ label, value }: { label: string; value: number }) {
   return (

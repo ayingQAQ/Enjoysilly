@@ -339,19 +339,15 @@ export function CharactersScreen() {
   );
 
   return (
-    <section className="mx-auto flex min-h-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-5 lg:px-8">
-      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-5 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <section className="asset-page">
+      <header className="asset-page-header">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="mb-2 text-sm font-medium text-[var(--accent-strong)]">
-              角色卡
-            </p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               角色库
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
-              管理本地 SillyTavern PNG / JSON 角色卡，保留未知字段、extensions
-              与内嵌世界书，可安全编辑常用字段并继续导出兼容文件。
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+              你的角色、故事与世界设定。支持 PNG / JSON 双向导入导出。
             </p>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -392,9 +388,9 @@ export function CharactersScreen() {
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="asset-metrics">
         <SummaryTile label="全部角色" value={characters.length} />
         <SummaryTile
           label="内嵌世界书"
@@ -459,7 +455,7 @@ export function CharactersScreen() {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>

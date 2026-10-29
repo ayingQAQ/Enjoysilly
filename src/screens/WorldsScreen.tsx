@@ -305,21 +305,17 @@ export function WorldsScreen() {
   );
 
   return (
-    <section className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-5 py-6 lg:px-8">
-      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <section className="asset-page">
+      <header className="asset-page-header">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="mb-2 text-sm font-medium text-[var(--accent-strong)]">
-              世界书管理
-            </p>
-            <h1 className="max-w-2xl text-3xl font-semibold tracking-tight">
-              在保留原始方言的前提下，安全整理世界设定与触发规则。
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">世界书</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">整理世界设定，让故事在合适的时刻展开。</p>
+            <details className="mt-2 text-xs text-[var(--text-secondary)]"><summary className="cursor-pointer">格式与兼容说明</summary><p className="mt-2 max-w-xl leading-6">
               支持 SillyTavern 原生 <code>{"{entries:{}}"}</code> 世界书，也支持角色卡内嵌
               <code>character_book.entries[]</code> 方言。导入后会保留未知字段，列表先聚焦条目数量、
               启用状态和关键词样本，并可编辑条目与高级扫描字段。
-            </p>
+            </p></details>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 读取世界书失败：{error}
@@ -359,9 +355,9 @@ export function WorldsScreen() {
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="asset-metrics">
         <SummaryTile label="世界书" value={worlds.length} />
         <SummaryTile
           label="条目总数"

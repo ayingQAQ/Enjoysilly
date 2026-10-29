@@ -245,21 +245,17 @@ export function PresetsScreen() {
     .length;
 
   return (
-    <section className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-5 py-6 lg:px-8">
-      <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-6 shadow-sm">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <section className="asset-page">
+      <header className="asset-page-header">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="mb-2 text-sm font-medium text-[var(--accent-strong)]">
-              预设管理
-            </p>
-            <h1 className="max-w-2xl text-3xl font-semibold tracking-tight">
-              只导入 ST 原生 Chat Completion 预设，正则脚本从 extensions 中读取。
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--text-secondary)]">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">预设</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">调整提示词与采样参数，找到适合故事的表达。</p>
+            <details className="mt-2 text-xs text-[var(--text-secondary)]"><summary className="cursor-pointer">格式与兼容说明</summary><p className="mt-2 max-w-xl leading-6">
               当前页面支持 <code>prompts[]</code> +{" "}
               <code>prompt_order[]</code> 结构的 JSON 预设。TavernHelper、JS-Slash-Runner
               和独立正则脚本文件不会作为预设执行；相关第三方字段会在原生预设里原样保留。
-            </p>
+            </p></details>
             {error ? (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 读取预设失败：{error}
@@ -299,9 +295,9 @@ export function PresetsScreen() {
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="asset-metrics">
         <SummaryTile label="预设" value={presets.length} />
         <SummaryTile label="Prompt" value={totalPromptCount} />
         <SummaryTile label="正则脚本" value={totalRegexCount} />

@@ -39,7 +39,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
-            className="grid size-9 place-items-center rounded-lg text-[var(--text-secondary)] transition hover:bg-[var(--surface-muted)]"
+            className="grid size-11 place-items-center rounded-lg text-[var(--text-secondary)] transition hover:bg-[var(--surface-muted)]"
             type="button"
             aria-label="切换明暗主题"
             title="切换明暗主题"
@@ -55,7 +55,7 @@ export function AppShell({ children }: AppShellProps) {
       </header>
       {appearance.error ? <p role="alert" className="shrink-0 px-4 text-red-600">{appearance.error}<button onClick={() => void appearance.refresh()}>重新读取</button></p> : null}
 
-      <nav className="flex shrink-0 gap-2 overflow-x-auto border-b border-[var(--border-soft)] bg-[var(--surface)] px-4 py-2 lg:hidden">
+      <nav aria-label="移动工作区导航" className="flex shrink-0 gap-2 overflow-x-auto border-b border-[var(--border-soft)] bg-[var(--surface)] px-3 py-1 lg:hidden">
         {workspaceSections.map((section) => {
           const Icon = section.icon;
           const isActive = activeSection === section.id;
@@ -64,12 +64,13 @@ export function AppShell({ children }: AppShellProps) {
             <button
               key={section.id}
               className={[
-                "inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition",
+                "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition",
                 isActive
                   ? "border-[var(--accent)] bg-[var(--accent-weak)] text-[var(--accent-strong)]"
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]",
               ].join(" ")}
               type="button"
+              aria-current={isActive ? "page" : undefined}
               onClick={() => setActiveSection(section.id)}
             >
               <Icon size={16} />
@@ -79,7 +80,7 @@ export function AppShell({ children }: AppShellProps) {
         })}
       </nav>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[232px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[208px_minmax(0,1fr)]">
         <aside className="hidden min-h-0 border-r border-[var(--border-soft)] bg-[var(--surface)] lg:flex lg:flex-col">
           <nav aria-label="工作区导航" className="min-h-0 overflow-y-auto overscroll-contain space-y-5 p-3 pt-5">
             {sectionGroups.map((group) => (
@@ -100,10 +101,11 @@ export function AppShell({ children }: AppShellProps) {
                           className={[
                             "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition",
                             isActive
-                              ? "bg-[var(--accent-weak)] text-[var(--accent-strong)]"
+                              ? "bg-[var(--surface-muted)] text-[var(--accent-strong)]"
                               : "text-[var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]",
                           ].join(" ")}
                           type="button"
+                          aria-current={isActive ? "page" : undefined}
                           onClick={() => setActiveSection(section.id)}
                         >
                           <Icon size={17} />

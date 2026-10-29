@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { PanelRightOpen } from "lucide-react";
+import { ChatContextPanel, useChatContextLayout } from "./chat/ChatContextPanel";
 
 import { getChatMessageDisplayText } from "../lib/chatHistory";
 import { estimateChatMessagesTokens } from "../lib/tokenEstimate";
@@ -51,7 +51,7 @@ export function ChatScreen() {
   const [loadedArchiveName, setLoadedArchiveName] = useState<string | null>(null);
   const [loadedChatMetadata, setLoadedChatMetadata] =
     useState<ChatMetadataLine | null>(null);
-  const [isContextPanelOpen, setIsContextPanelOpen] = useState(true);
+  const { wide: isWideChat, open: isContextPanelOpen, setOpen: setIsContextPanelOpen } = useChatContextLayout();
   const lastAutoGreetingCharacterIdRef = useRef<string | null>(null);
 
   const {
@@ -449,7 +449,7 @@ export function ChatScreen() {
   );
 
   return (
-    <section className="relative mx-auto flex h-full min-h-0 max-w-[1440px] flex-col px-4 py-3 lg:px-6 lg:py-4">
+    <section className="relative mx-auto flex h-full min-h-0 max-w-[1600px] flex-col p-2 sm:p-4 lg:p-5">
       {messageEdit && <ChatMessageEditor draft={messageEdit} onChange={setMessageEdit}
         onClose={async () => {
           if (await draftRecovery.persist({ ...workspaceDraft, messageEdit: null })) setMessageEdit(null);
@@ -470,25 +470,16 @@ export function ChatScreen() {
         }} />}
       {recoveryNotice && <p role="status" className="mb-3 rounded-lg border border-[var(--border-soft)] p-3 text-sm">{recoveryNotice} <button className="underline" onClick={() => setRecoveryNotice(null)}>知道了</button></p>}
       {draftRecovery.error && <p role="alert" className="mb-3 rounded-lg border border-red-300 p-3 text-sm text-red-600">{draftRecovery.error} <button className="underline" onClick={draftRecovery.retry}>重试草稿读写</button></p>}
-      {!isContextPanelOpen ? (
-        <button
-          aria-expanded={false}
-          className="absolute right-4 top-3 z-10 inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] shadow-sm transition hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] lg:right-6 lg:top-4"
-          type="button"
-          onClick={() => setIsContextPanelOpen(true)}
-        >
-          <PanelRightOpen size={15} />
-          打开上下文
-        </button>
-      ) : null}
-
       <div
         className={[
           "grid min-h-0 flex-1 items-stretch gap-4",
-          isContextPanelOpen ? "xl:grid-cols-[minmax(0,1fr)_340px]" : "grid-cols-1",
+          isContextPanelOpen && isWideChat ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1",
         ].join(" ")}
       >
         <ChatConversationPane
+          characterName={activeCharacter.data.name}
+          contextOpen={isContextPanelOpen}
+          onToggleContext={() => setIsContextPanelOpen(value => !value)}
           disabled={isImportingChat}
           canSend={canSend}
           displayRegexScripts={activeRegexScripts}
@@ -511,7 +502,7 @@ export function ChatScreen() {
           onStop={handleStop}
           onSubmit={(event) => void handleSend(event)}
         />
-        {isContextPanelOpen ? <ChatSidebar
+        {isContextPanelOpen ? <ChatContextPanel wide={isWideChat} onClose={() => setIsContextPanelOpen(false)}><ChatSidebar
           activeCharacterName={activeCharacter.data.name}
           archiveActionId={archiveActionId}
           archiveError={archiveError}
@@ -565,7 +556,7 @@ export function ChatScreen() {
           onSelectedPresetIdChange={setSelectedPresetId}
           onSave={() => void handleSave()}
           onUserNameChange={setUserName}
-        /> : null}
+        /></ChatContextPanel> : null}
       </div>
     </section>
   );

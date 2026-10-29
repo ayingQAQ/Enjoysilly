@@ -42,7 +42,7 @@ export function ChatComposer({
         输入消息
       </label>
       {quickReplySets.length > 0 ? (
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        <div className="mb-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto">
           {quickReplySets.flatMap((quickReplySet) =>
             quickReplySet.payload.qrList.map((item, index) => (
               <button
@@ -61,7 +61,7 @@ export function ChatComposer({
       <div className="flex items-center gap-2">
         <textarea
           id="chat-message-input"
-          className="h-14 min-h-14 flex-1 resize-none rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-weak)]"
+          className="h-14 min-h-14 min-w-0 flex-1 resize-none rounded-xl border border-[var(--border-soft)] bg-[var(--surface-muted)] px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-weak)]"
           disabled={isStreaming || disabled}
           placeholder="输入消息..."
           rows={1}

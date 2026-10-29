@@ -98,7 +98,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
   const archiveDisabled = props.disabled;
 
   return (
-    <aside className="flex min-h-[420px] min-w-0 flex-col rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-3 shadow-sm xl:h-full xl:min-h-0">
+    <aside className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-3">
       <div className="flex items-start justify-between gap-3 px-1 pb-3">
         <div className="flex min-w-0 items-start gap-2">
           <div className="mt-0.5 text-[var(--accent-strong)]">
@@ -113,7 +113,7 @@ export function ChatSidebar(props: ChatSidebarProps) {
         </div>
         <button
           aria-label="收起对话上下文"
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-[var(--text-secondary)] transition hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
+          className="grid size-11 shrink-0 place-items-center rounded-lg text-[var(--text-secondary)] transition hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]"
           type="button"
           onClick={props.onClose}
         >

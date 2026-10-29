@@ -91,7 +91,8 @@ export async function runDailyWorkflowChecks(browser, baseURL = "http://127.0.0.
           await page.getByRole("textbox", { name: "注入内容 content", exact: true }).fill("世界新内容🌙");
         } else {
           await page.getByRole("button", { name: "新增提示词" }).click();
-          const detail = page.locator("details").nth(1);
+          const editor = page.getByRole("dialog", { name: "编辑预设", exact: true });
+          const detail = editor.locator("details").nth(1);
           await detail.locator("summary").click();
           await detail.getByRole("textbox", { name: "名称", exact: true }).fill("自定义🌙");
           await detail.getByRole("textbox", { name: "内容", exact: true }).fill("自定义内容\n第二行");
