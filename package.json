@@ -1,7 +1,7 @@
 {
   "name": "my-silly",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.3.0",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "node scripts/run-browser-check.mjs",
     "typecheck": "tsc -b"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^24.10.2",
     "@types/react": "^18.3.27",
