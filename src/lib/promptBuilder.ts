@@ -27,6 +27,7 @@ export interface PromptBuilderGroupMember {
 }
 
 export interface PromptBuilderInput {
+  randomForPromptMacro?: (prompt: PresetPrompt, promptIndex: number, offset: number) => number;
   messageSources?: PromptMessageSource[];
   preset: ChatCompletionPreset;
   character: CharacterCard;
@@ -66,9 +67,10 @@ export async function buildChatCompletionMessages(
   );
   const orderedPrompts = selectOrderedPrompts(input, promptMap);
 
-  const messages = orderedPrompts.flatMap((prompt) => {
+  const messages = orderedPrompts.flatMap((prompt, promptIndex) => {
     const content = createPromptContent(prompt, context);
-    const normalizedContent = replacePromptMacros(content, context.input).trim();
+    const normalizedContent = replacePromptMacros(content, context.input,
+      input.randomForPromptMacro ? offset => input.randomForPromptMacro!(prompt, promptIndex, offset) : undefined).trim();
 
     if (normalizedContent.length === 0) {
       return [];
@@ -257,13 +259,14 @@ function formatScannedWorldInfo(
 function replacePromptMacros(
   content: string,
   input: PromptBuilderInput,
+  randomAt?: (offset: number) => number,
 ): string {
   return replaceMacros(content, {
     ...input.macroContext,
     characterName: input.character.data.name,
     nickname: getCharacterNickname(input.character),
     userName: input.userName,
-  });
+  }, randomAt);
 }
 
 function getCharacterNickname(character: CharacterCard): string | undefined {

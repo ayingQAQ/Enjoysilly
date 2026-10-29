@@ -12,10 +12,11 @@ const macroPattern = /\{\{([^{}]*)\}\}/g;
 export function replaceMacros(
   input: string,
   context: MacroReplacementContext = {},
+  randomAt?: (offset: number) => number,
 ): string {
-  return input.replace(macroPattern, (match, rawExpression: string) => {
+  return input.replace(macroPattern, (match, rawExpression: string, offset: number) => {
     const expression = rawExpression.trim();
-    const replacement = resolveMacro(expression, context);
+    const replacement = resolveMacro(expression, randomAt ? { ...context, random: () => randomAt(offset) } : context);
 
     return replacement ?? match;
   });

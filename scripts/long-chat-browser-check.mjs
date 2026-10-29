@@ -91,13 +91,17 @@ try {
     assert.ok(sent.every(body => body.messages.some(m => m.content === "时效设定")));
     await page.getByRole("button", { name: "打开上下文", exact: true }).click();
     await page.getByText("对话操作", { exact: true }).click();
+    await page.getByRole("button", { name: "继续", exact: true }).click();
+    await expect.poll(() => sent.length).toBe(3);
+    assert.ok(sent[2].messages.some(m => m.content === "时效设定"));
+    await expect(page.getByRole("button", { name: "保存", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "保存", exact: true }).click();
     await expect.poll(async () => (await readChats(page)).some(c => c.payload.messages.length === 4)).toBe(true);
     await page.keyboard.press("Escape");
     await page.reload(); await expect(composer).toBeEnabled(); await composer.fill("moon");
     await page.getByRole("button", { name: "预览提示词", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "发送前提示词预览", exact: true })).toContainText("冷却中");
-    assert.equal(sent.length, 2);
+    assert.equal(sent.length, 3);
     console.log({ timedEffectsReplayAfterReload: true });
     await page.keyboard.press("Escape"); await composer.fill("");
     await page.getByRole("button", { name: "分组聊天", exact: true }).click();
@@ -112,7 +116,7 @@ try {
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(page.getByText(/上下文预算超限：/)).toBeVisible();
     await expect(groupInput).toHaveValue("长".repeat(9000));
-    assert.equal(sent.length, 2);
+    assert.equal(sent.length, 3);
   } finally { await context.close(); }
 } finally { await browser.close(); }
 async function readChats(page) {

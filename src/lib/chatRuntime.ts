@@ -7,7 +7,7 @@ import {
   createChatCompletionRequestBody,
   type OpenAICompatibleChatCompletionRequestBody,
 } from "./api";
-import { buildChatHistoryText, getChatMessageDisplayText } from "./chatHistory";
+import { buildChatHistoryText, getChatMessageDisplayText, type ChatHistoryTextRange } from "./chatHistory";
 import { extractRegexScripts } from "./presetIO";
 import {
   buildChatCompletionMessages,
@@ -63,14 +63,17 @@ export async function prepareChatCompletionRequest(
   chatMessages.forEach((message, index) => { if (message.is_user) protectedStart = index; });
   if (protectedStart < 0) protectedStart = Math.max(0, chatMessages.length - 1);
   let start = 0;
-  const randomValues: number[] = [];
+  const randomValues = new Map<string, number>();
   const random = input.macroContext?.random ?? Math.random;
   const now = input.macroContext?.now ?? new Date();
+  const historyLimit = typeof input.maxHistoryMessages === "number" && Number.isFinite(input.maxHistoryMessages)
+    ? Math.max(0, Math.floor(input.maxHistoryMessages)) : chatMessages.length;
   while (true) {
-    let randomIndex = 0;
+    const segmentRanges: ChatHistoryTextRange[] = [];
     const messageSources: PromptMessageSource[] | undefined = input.diagnostics ? [] : undefined;
-    const chatHistory = buildChatHistoryText(chatMessages.slice(start), {
-      maxMessages: input.maxHistoryMessages,
+    const chatHistory = buildChatHistoryText(chatMessages, {
+      segmentRanges,
+      maxMessages: Math.min(historyLimit, chatMessages.length - start),
       includeSystemMessages: input.includeSystemMessages,
       atDepthEntries: worldInfoScanResult?.atDepth,
     });
@@ -84,10 +87,14 @@ export async function prepareChatCompletionRequest(
       worldInfoBefore: formatScannedWorldInfo(worldInfoScanResult?.before),
       worldInfoAfter: formatScannedWorldInfo(worldInfoScanResult?.after),
       promptOrderCharacterId: input.promptOrderCharacterId,
-      macroContext: { ...input.macroContext, now, random: () => {
-        if (randomIndex === randomValues.length) randomValues.push(random());
-        return randomValues[randomIndex++];
-      } },
+      macroContext: { ...input.macroContext, now },
+      randomForPromptMacro: (prompt, promptIndex, offset) => {
+        const range = prompt.marker && prompt.identifier === "chatHistory"
+          ? segmentRanges.find(range => offset >= range.start && offset < range.end) : undefined;
+        const key = range ? `${promptIndex}:${range.sourceKey}:${offset - range.start}` : `${promptIndex}:prompt:${offset}`;
+        if (!randomValues.has(key)) randomValues.set(key, random());
+        return randomValues.get(key)!;
+      },
       groupMembers: input.groupMembers,
       groupName: input.groupName,
       speakerCharacterId: input.speakerCharacterId,

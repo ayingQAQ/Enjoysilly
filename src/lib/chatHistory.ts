@@ -2,10 +2,12 @@ import type { ChatMessageLine } from "../types/chat";
 import type { ScannedWorldInfoEntry } from "./worldInfoScan";
 
 export interface ChatHistoryBuildOptions {
+  segmentRanges?: ChatHistoryTextRange[];
   maxMessages?: number;
   includeSystemMessages?: boolean;
   atDepthEntries?: ScannedWorldInfoEntry[];
 }
+export interface ChatHistoryTextRange { start: number; end: number; sourceKey: string }
 
 export interface ChatHistorySegment {
   kind: "message" | "worldInfo";
@@ -36,10 +38,16 @@ export function buildChatHistoryText(
   messages: ChatMessageLine[],
   options: ChatHistoryBuildOptions = {},
 ): string {
-  return buildChatHistorySegments(messages, options)
-    .map(formatChatHistorySegment)
-    .filter((line) => line.trim().length > 0)
-    .join("\n");
+  let text = "";
+  for (const segment of buildChatHistorySegments(messages, options)) {
+    const line = formatChatHistorySegment(segment);
+    if (!line.trim()) continue;
+    const start = text.length + (text ? 1 : 0);
+    options.segmentRanges?.push({ start, end: start + line.length,
+      sourceKey: segment.kind === "message" ? `message:${segment.sourceIndex}` : `world:${segment.worldInfo?.sourceIndex}` });
+    text += (text ? "\n" : "") + line;
+  }
+  return text;
 }
 
 export function getChatMessageDisplayText(message: ChatMessageLine): string {

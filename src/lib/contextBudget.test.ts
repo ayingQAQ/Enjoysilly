@@ -49,4 +49,19 @@ describe("context budget", () => {
     expect(result.messages[0].content).toBe("必要设定");
     expect(result.budget?.omittedMessages).toBe(1);
   });
+  it("keeps random choices attached to surviving history and later prompts after earlier macros are trimmed", async () => {
+    const source = base();
+    source.preset.prompts = [
+      { identifier: "chatHistory", marker: true, role: "user" },
+      { identifier: "after", content: "after={{random::A::B}}", role: "system" } as typeof source.preset.prompts[number],
+    ];
+    let calls = 0;
+    const result = await prepareChatCompletionRequest({ ...source,
+      chatMessages: [message("{{random::X::Y}}" + "旧".repeat(200)), message("new {{random::L::R}}")],
+      macroContext: { random: () => [0, 0.9, 0][calls++] ?? 0.5 },
+    });
+    expect(result.budget?.omittedMessages).toBe(1);
+    expect(result.messages).toEqual([{ role: "user", content: "U: new R" }, { role: "system", content: "after=A" }]);
+    expect(calls).toBe(3);
+  });
 });

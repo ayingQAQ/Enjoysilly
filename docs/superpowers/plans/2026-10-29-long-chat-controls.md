@@ -24,18 +24,18 @@
 ### Task 1: Context budget
 **Files:** src/lib/contextBudget.ts and test, chatRuntime.ts, chatStreaming.ts, useChatStreamingActions.ts, ChatPromptPreview.tsx.
 **Interfaces:** BudgetReport on prepared request; ContextBudgetError before network; iterative suffix fitting with fixed time/random tape and single world scan.
-- [ ] Write tests preserving mandatory content/latest round, trimming oldest history, output reserve, invalid limits, overflow/no request, deterministic fitting; run RED.
-- [ ] Implement helpers and runtime integration; ordinary send preflight keeps input until prepared and routes trimmed snapshots to preview; run targeted/full tests GREEN; commit.
+- [x] Write tests preserving mandatory content/latest round, trimming oldest history, output reserve, invalid limits, overflow/no request, deterministic fitting; run RED.
+- [x] Implement helpers and runtime integration; ordinary send preflight keeps input until prepared and confirms trimming (explicit preview remains available); run targeted/full tests GREEN; commit.
 
 ### Task 2: Timed effects
 **Files:** src/lib/worldInfoTimed.ts and test, worldInfoScan.ts, worldInfoDiagnostics.ts, chatRuntime.ts, compatibility report/docs.
 **Interfaces:** optional scanner runtimeState result; source-index state; replayTimedWorldInfo(entries,messages,options) used by runtime when timed fields exist.
-- [ ] Test sticky expiry/cooldown/delay, portable fields, disabled/empty, duplicate IDs, budget rejection, replay after edit/swipe/reload/branch and repeated scans; run RED.
-- [ ] Implement pure transitions and replay; enable timed effects in shared runtime, explain outcomes/limits; targeted/full tests GREEN; commit.
+- [x] Test sticky expiry/cooldown/delay, portable fields, disabled/empty, duplicate IDs, budget rejection, replay after edit/swipe/reload/branch and repeated scans; run RED.
+- [x] Implement pure transitions and replay; enable timed effects in shared runtime, explain outcomes/limits; targeted/full tests GREEN; commit.
 
 ### Task 3: Search and branch archives
 **Files:** src/lib/chatSearch.ts and test, src/services/chatBranch.ts and test, db.ts, chatPersistence.ts, src/screens/chat/ChatSearch.tsx, ChatMessageList/ChatConversationPane/ChatScreen.
 **Interfaces:** searchChatMessages(messages,query) returns source indexes; createChatBranch(snapshot, sourceId/version/index) atomic independent record, local branch provenance.
-- [ ] Test current swipe/Chinese/emoji/1000 messages; branch immutability/conflicts/missing source/provenance after save; run RED.
-- [ ] Implement search location and explicit branch button at hit; service writes fresh ID without changing active session; browser verifies original remains and new branch restores; GREEN; commit.
+- [x] Test current swipe/Chinese/emoji/1000 messages; branch immutability/conflicts/missing source/provenance after save; run RED.
+- [x] Implement search location and explicit branch button at hit; service writes fresh ID without changing active session; browser verifies original remains and new branch restores; GREEN; commit.
 - [ ] Full unit/build and Edge/Chrome browser/layout/preview/new long-chat regressions; docs/progress; fresh independent review; fix important findings; merge main, retest, push.
